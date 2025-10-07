@@ -1,0 +1,24 @@
+# @package _global_
+
+defaults:
+  - _tu_dataset
+  # To add transforms (or pre-transforms) to the dataset, use the following config group:
+  - optional /data/dataset/transform: null
+  - optional /data/dataset/transform@data.dataset.pre_transform: null
+
+hparams:
+  # hparams.data.* values are meant to expose the constant properties of the `torch_geometric.data.Dataset` instance
+  # to make them available during the resolution of the configuration, using the same names.
+  # This is done to allow for automatic interpolation of data-processing components (e.g. stratified splits)
+  # and model architecture components (e.g. input/output dimensions) during the resolution of the configuration.
+  # Therefore, it is important to provide the values available for your dataset, whether it is a PyTorch Geometric
+  # dataset or your own custom dataset.
+  data:
+    # ENZYMES dataset contains 595 graphs in the cleaned version, and 600 graphs in the original version
+    num_graphs: ${op.ternary:${data.dataset.cleaned}, 595, 600}
+    num_node_labels: 3
+    num_node_attributes: 18
+    num_node_features: ${op:add,${.num_node_labels},${op.ternary:${data.dataset.use_node_attr}, ${.num_node_attributes}, 0}}
+    num_classes: 6
+    class_labels: [EC1, EC2, EC3, EC4, EC5, EC6]
+    task: multiclass

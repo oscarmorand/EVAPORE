@@ -1,0 +1,246 @@
+[project]
+name = "graph-neural-networks"
+version = "0.1.0"
+description = "PyTorch Geometric + Lightning + Hydra. A user-friendly toolbox/template for experimenting with Graph Neural Networks (GNNs)."
+readme = "README.md"
+repository = "https://github.com/nathanpainchaud/graph-neural-networks"
+authors = [
+    {name = "Nathan Painchaud", email = "nathan.painchaud@insa-lyon.fr"},
+]
+requires-python = ">=3.12,<4"
+dependencies = [
+    "filelock>=3.16.1,<4",
+    "hydra-colorlog>=1.2.0,<2",
+    "hydra-core>=1.3.2,<2",
+    "hydra-joblib-launcher>=1.2.0,<2",
+    "hydra-optuna-sweeper>=1.2.0,<2",
+    "lightning>=2.5.0.post0,<2.6",
+    "rich>=14,<15",
+    "rootutils>=1.0.7,<2",
+    "scikit-learn>=1.6.1,<2",
+    # Use our fork of torch-geometric that patches Lightning imports until the following issue gets solved and released:
+    # https://github.com/pyg-team/pytorch_geometric/issues/9811
+    # NOTE: The direct reference is specified here using standard syntax (instead of in `tool.uv.sources`)
+    # so that our fork also gets chosen when installing the package using `pip install .`
+    "torch-geometric @ git+https://github.com/nathanpainchaud/pytorch_geometric.git@b20a4d72c3309f608b8990c89d128c67799a3fff",
+    "torchmetrics[visual]>=1.8,<1.9",
+]
+[project.optional-dependencies]
+all = [
+    "graph-neural-networks[wandb,ogb]",
+]
+wandb = [
+    "wandb>=0.22,<0.23",
+]
+ogb = [
+    "ogb>=1.3.6,<2",
+]
+# torch libraries are not included in the main dependencies because they can be platform-specific
+# rather, we leave them as optional dependencies (even though they are required for the code to run)
+# and leave it up to the user to indicate which version they want to install
+# This solution is inspired by one of the recommended ways to install pytorch listed in uv's documentation:
+# https://docs.astral.sh/uv/guides/integration/pytorch/#configuring-accelerators-with-optional-dependencies
+# Each extra corresponds to a different platform, so it is up to project maintainers to decide which platforms
+# they want to list here, i.e. support
+cpu = [
+  "torch-scatter>=2.1.2,<3",    # torch-scatter is an optional dependency of `torch-geometric` that optimizes scatter ops used by GNN models
+  "torch>=2.7,<2.8",
+]
+cu118 = [
+  "torch-scatter>=2.1.2,<3",    # torch-scatter is an optional dependency of `torch-geometric` that optimizes scatter ops used by GNN models
+  "torch>=2.7,<2.8",
+]
+cu126 = [
+  "torch-scatter>=2.1.2,<3",    # torch-scatter is an optional dependency of `torch-geometric` that optimizes scatter ops used by GNN models
+  "torch>=2.7,<2.8",
+]
+cu128 = [
+  "torch-scatter>=2.1.2,<3",    # torch-scatter is an optional dependency of `torch-geometric` that optimizes scatter ops used by GNN models
+  "torch>=2.7,<2.8",
+]
+
+[dependency-groups]
+dev = [
+    "pre-commit>=4.0.1,<5",
+    {include-group = "lint"},
+    {include-group = "test"},
+]
+lint = [
+    "docformatter>=1.7.5,<2",
+    "ruff>=0.13,<0.14",
+]
+test = [
+    "pytest>=8.3.4,<9",
+    "pytest-cov>=7,<8",
+    "sh>=2.2.1,<3",
+]
+
+[project.scripts]
+gnn-train = "graph_neural_networks.train:main"
+gnn-eval = "graph_neural_networks.eval:main"
+
+[build-system]
+requires = ["uv_build>=0.8,<0.9"]
+build-backend = "uv_build"
+
+[tool.uv]
+required-version = ">=0.8,<0.9"
+# Refer to the note above about installing pytorch using optional dependencies,
+# especially the link to uv's documentation, to understand this configuration
+conflicts = [
+  [
+    { extra = "cpu" },
+    { extra = "cu118" },
+    { extra = "cu126" },
+    { extra = "cu128" },
+  ],
+]
+
+[tool.uv.sources]
+# Refer to the note above about installing pytorch using optional dependencies,
+# especially the link to uv's documentation, to understand this configuration
+torch = [
+  { index = "pytorch-cpu", extra = "cpu" },
+  { index = "pytorch-cu118", extra = "cu118" },
+  { index = "pytorch-cu126", extra = "cu126" },
+  { index = "pytorch-cu128", extra = "cu128" },
+]
+torch-scatter = [
+  { index = "pyg-cpu", extra = "cpu" },
+  { index = "pyg-cu118", extra = "cu118" },
+  { index = "pyg-cu126", extra = "cu126" },
+  { index = "pyg-cu128", extra = "cu128" },
+]
+
+[[tool.uv.index]]
+# Refer to the note above about installing pytorch using optional dependencies,
+# especially the link to uv's documentation, to understand this configuration
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[[tool.uv.index]]
+name = "pytorch-cu118"
+url = "https://download.pytorch.org/whl/cu118"
+explicit = true
+
+[[tool.uv.index]]
+name = "pytorch-cu126"
+url = "https://download.pytorch.org/whl/cu126"
+explicit = true
+
+[[tool.uv.index]]
+name = "pytorch-cu128"
+url = "https://download.pytorch.org/whl/cu128"
+explicit = true
+
+[[tool.uv.index]]
+# PyG use their own index for their wheels built against specific PyTorch/CUDA versions
+# (see their install instructions: https://pytorch-geometric.readthedocs.io/en/stable/install/installation.html)
+# Since their index does not implement the PEP 503 Simple Repository API we have to specify to uv that it is "flat"
+# (see uv's documentation: https://docs.astral.sh/uv/concepts/indexes/#flat-indexes
+# and this issue: https://github.com/astral-sh/uv/issues/12238)
+name = "pyg-cpu"
+url = "https://data.pyg.org/whl/torch-2.7.0+cpu.html"
+format = "flat"
+explicit = true
+
+[[tool.uv.index]]
+name = "pyg-cu118"
+url = "https://data.pyg.org/whl/torch-2.7.0+cu118.html"
+format = "flat"
+explicit = true
+
+[[tool.uv.index]]
+name = "pyg-cu126"
+url = "https://data.pyg.org/whl/torch-2.7.0+cu126.html"
+format = "flat"
+explicit = true
+
+[[tool.uv.index]]
+name = "pyg-cu128"
+url = "https://data.pyg.org/whl/torch-2.7.0+cu128.html"
+format = "flat"
+explicit = true
+
+[tool.pytest.ini_options]
+addopts = [
+  "--color=yes",
+  "--durations=0",
+  "--strict-markers",
+  "--doctest-modules",
+]
+filterwarnings = [
+  "ignore::DeprecationWarning",
+  "ignore::UserWarning",
+]
+log_cli = "True"
+markers = [
+  "slow: slow tests",
+]
+minversion = "6.0"
+testpaths = "tests/"
+
+[tool.coverage.run]
+branch = true
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: nocover",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+]
+
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.lint]
+select = [
+    "A",    # see: https://pypi.org/project/flake8-builtins
+    "ANN",  # see: https://pypi.org/project/flake8-annotations
+    "B",    # see: https://pypi.org/project/flake8-bugbear
+    "C4",   # see: https://pypi.org/project/flake8-comprehensions
+    "D",    # see: https://pypi.org/project/pydocstyle
+    "E",    # see: https://pypi.org/project/pycodestyle
+    "EXE",  # see: https://pypi.org/project/flake8-executable
+    "F",    # see: https://pypi.org/project/pyflakes
+    "I",    # see: https://pypi.org/project/isort/
+    "ISC",  # see: https://pypi.org/project/flake8-implicit-str-concat
+    "N",    # see: https://pypi.org/project/pep8-naming
+    "PERF", # see: https://pypi.org/project/perflint/
+    "PIE",  # see: https://pypi.org/project/flake8-pie
+    "PLC",  # see: https://pypi.org/project/pylint/
+    "PLE",  # all Pylint errors except Refactor (R)
+    "PLW",
+    "PT",   # see: https://pypi.org/project/flake8-pytest-style
+    "Q",    # see: https://pypi.org/project/flake8-quotes
+    "RET",  # see: https://pypi.org/project/flake8-return
+    "RUF",  # Ruff-specific rules
+    "S",    # see: https://pypi.org/project/flake8-bandit
+    "SIM",  # see: https://pypi.org/project/flake8-simplify
+    "T10",  # see: https://pypi.org/project/flake8-debugger
+    "TID",  # see: https://pypi.org/project/flake8-tidy-imports/
+    "UP",   # see: https://docs.astral.sh/ruff/rules/#pyupgrade-up
+    "W",    # see: https://pypi.org/project/pycodestyle
+]
+ignore = [
+    # Do not require type hints for *args and **kwargs
+    "ANN002",
+    "ANN003",
+    # Allow use of Any type
+    "ANN401",
+    # Do not require docstrings in __init__ and modules
+    "D100",
+    "D104",
+    # Allow use of assert
+    "S101",
+]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.docformatter]
+recursive = true
+wrap-summaries=120
+wrap-descriptions=120

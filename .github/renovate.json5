@@ -1,0 +1,45 @@
+{
+  $schema: 'https://docs.renovatebot.com/renovate-schema.json',
+  extends: [
+    'config:recommended',
+  ],
+  'pre-commit': {
+    enabled: true,
+  },
+  pyenv: {
+    enabled: false,
+  },
+  packageRules: [
+    {
+      // Group Ruff dev dependency and pre-commit hook
+      groupName: 'Ruff',
+      matchPackageNames: [
+        'ruff',
+        'astral-sh/ruff-pre-commit',
+      ],
+    },
+    {
+      // Set monthly schedule to reduce noise (since this hook is updated very frequently)
+      description: 'Schedule renovatebot/pre-commit-hooks updates on the first day of the month before 4 AM.',
+      matchPackageNames: [
+        'renovatebot/pre-commit-hooks',
+      ],
+      schedule: [
+        '* 0-3 1 * *',
+      ],
+    },
+    {
+      // Ignore patch bumps to reduce noise (since these hooks receive frequent patch bumps)
+      // For hooks mirroring dev dependencies, also makes hooks updates consistent with dependencies version ranges
+      description: 'Disable patch bumps for pre-commit hooks with frequent patch updates.',
+      matchPackageNames: [
+        'astral-sh/ruff-pre-commit',
+        'rbubley/mirrors-prettier'
+      ],
+      matchUpdateTypes: [
+        'patch',
+      ],
+      enabled: false,
+    },
+  ],
+}
