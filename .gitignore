@@ -48,3 +48,6 @@ src/**/configs/local/*
 /data/
 /logs/
 .env
+
+# Notebooks wandb
+notebooks/wandb/
