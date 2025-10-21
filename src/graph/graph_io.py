@@ -1,7 +1,7 @@
 '''
 Authors: Oscar Morand (LRE, CREATIS), Morgane Des-Ligneris (CREATIS)
 Date: October 2025
-Description: Functions 
+Description: Functions to read/write graphs in various formats (JSON, DOT, PNG).
 '''
 
 import logging
@@ -10,9 +10,9 @@ import json
 import networkx as nx
 from PIL import Image
 
-from graph_visualization import get_graph_overlay_img
+from graph.graph_visualization import get_graph_overlay_img
 
-logging.basicConfig(level=logging.INFO)
+
 logger = logging.getLogger(__name__)
 
 

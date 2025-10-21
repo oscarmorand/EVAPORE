@@ -12,9 +12,9 @@ from scipy.ndimage import distance_transform_edt
 from networkx import from_scipy_sparse_array
 from skan.csr import skeleton_to_csgraph
 
-from graph_cleaning import clean_graph
+from graph.graph_cleaning import clean_graph
 
-logging.basicConfig(level=logging.INFO)
+
 logger = logging.getLogger(__name__)
 
 
@@ -187,7 +187,36 @@ def follow_path(graph: nx.Graph,
     return current, centerline, radius, total_length
 
 
-def create_branch_graph(graph: nx.Graph) -> nx.Graph:
+def path_already_exists(graph: nx.MultiGraph,
+                        start: int, 
+                        end: int, 
+                        centerline: list
+                        ) -> bool:
+    """
+    Check if a path with the same centerline already exists between two nodes.
+
+    This function compares the centerline of a proposed new edge with existing edges
+    between the same pair of nodes. If an identical centerline is found, it indicates
+    that the path already exists in the graph.
+
+    Args:
+        graph: NetworkX MultiGraph to check
+        start: Start node ID
+        end: End node ID
+        centerline: List of 3D coordinates representing the proposed edge's centerline
+
+    Returns:
+        bool: True if an identical path already exists, False otherwise
+    """
+    if graph.has_edge(start, end):
+        for key in graph[start][end]:
+            existing_centerline = graph[start][end][key].get("centerline", [])
+            if set(map(tuple, existing_centerline)) == set(map(tuple, centerline)):
+                return True
+    return False
+
+
+def create_branch_graph(graph: nx.Graph) -> nx.MultiGraph:
     """
     Transform pixel-level graph into branch-level graph representation.
 
@@ -210,7 +239,7 @@ def create_branch_graph(graph: nx.Graph) -> nx.Graph:
         Branch-level NetworkX graph with vessels as edges between branch points.
         Nodes represent terminals/bifurcations, edges represent vessel segments.
     """
-    branches_graph = nx.Graph()
+    branches_graph = nx.MultiGraph()
     edge_counter = 1
     visited = set()
 
@@ -235,6 +264,9 @@ def create_branch_graph(graph: nx.Graph) -> nx.Graph:
             end_node, centerline, radius, length = follow_path(
                 graph, start_node, neighbor, visited
             )
+
+            if path_already_exists(branches_graph, start_node, end_node, centerline):
+                continue
 
             # Add both endpoint nodes to branch graph
             for node in (start_node, end_node):
@@ -332,9 +364,13 @@ def verify_pixel_coverage(
         logger.info("Perfect skeleton coverage achieved!")
 
 
-def skeleton_to_graph(skeleton: np.ndarray,
+# =============================================================================
+# HIGH-LEVEL GRAPH CREATION FUNCTION
+# =============================================================================
+
+def build_base_graph(skeleton: np.ndarray,
                       distance_map: np.ndarray
-                      ) -> nx.Graph:
+                      ) -> nx.MultiGraph:
     """
     Convert a binary skeleton mask to a branch-level graph.
 
@@ -343,7 +379,7 @@ def skeleton_to_graph(skeleton: np.ndarray,
         distance_map (np.ndarray): Distance map (2D array)
 
     Returns:
-        nx.Graph: Branch-level graph representation
+        nx.MultiGraph: Branch-level graph representation
     """
     skeleton_pixel_count = np.sum(skeleton > 0)
     logger.info("Original skeleton contains %d pixels", skeleton_pixel_count)
@@ -356,22 +392,21 @@ def skeleton_to_graph(skeleton: np.ndarray,
     # Create branch-level graph from pixel graph
     branch_graph = create_branch_graph(pixel_graph)
 
-    # Verify pixel coverage against original skeleton
-    verify_pixel_coverage(branch_graph, skeleton)
-
-    return branch_graph
+    return branch_graph, pixel_graph
 
 
 def img_to_graph(img: np.ndarray, 
                  clean: bool = True, 
-                 closing_radius: int = 0
+                 closing_radius: int = 0,
+                 return_pixel_graph: bool = False
                  ) -> nx.Graph:
     """Convert an image to a graph representation.
 
     Args:
         img (np.ndarray): Binary image (2D array)
         clean (bool, optional): Whether to clean the graph. Defaults to True.
-        close (bool, optional): Whether to apply closing to the image. Defaults to True.
+        closing_radius (int, optional): Radius for morphological closing. Defaults to 0.
+        return_pixel_graph (bool, optional): Whether to return the pixel-level graph. Defaults to False.
 
     Returns:
         nx.Graph: Graph representation of the image.
@@ -386,10 +421,12 @@ def img_to_graph(img: np.ndarray,
     distance_map = distance_transform_edt(img)
 
     # Convert skeleton to branch-level graph
-    G = skeleton_to_graph(skel, distance_map)
+    G, pixel_G = build_base_graph(skel, distance_map)
 
     # Optionally clean the graph
     if clean:
         G = clean_graph(G, min_length=10.0, radius_ratio_threshold=0.3, length_ratio_threshold=1.5)
-
+    
+    if return_pixel_graph:
+        return G, pixel_G
     return G
