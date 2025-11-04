@@ -6,7 +6,7 @@ from graph.graph_creation import img_to_graph
 from fire import Fire
 import logging
 import colorlog
-from graph.graph_io import save_graph_to_dot
+from graph.graph_io import save_graph_to_json
 import json
 from utils.path import data_dir
 
@@ -74,10 +74,10 @@ def convert_FIVES_to_graph(log_level = "INFO", n_debug = -1):
         G = img_to_graph(img, clean=True, closing_radius=1, return_pixel_graph=False)
         
         id_str = str(id).zfill(3)
-        filename = f"{id_str}_graph.dot"
+        filename = f"FIVES_{id_str}.json"
         dst_path = os.path.join(dst_dir, filename)
 
-        save_graph_to_dot(G, dst_path)
+        save_graph_to_json(G, dst_path)
 
         studies_info[id_str] = {
             "graph_path": dst_path,

@@ -70,6 +70,7 @@ class MetricTrackingLitModule(LightningModule, ABC):
 
         self._base_metrics, self._nonscalar_metrics = split_scalar_nonscalar_metrics(metrics or {})
 
+        self.train_metrics_tracker, self.val_metrics_tracker, self.test_metrics = None, None, None
         if self._base_metrics:
             # Use metric collection to group metrics in a single object, to update and log them together
             # torchmetrics recommends to use different instances of the metrics for train, val, and test
@@ -83,6 +84,7 @@ class MetricTrackingLitModule(LightningModule, ABC):
 
         # Group non-scalar metrics separately, since they need custom handling, but with the same pattern of
         # train/val/test instances as for scalar metrics
+        self.train_nonscalar_metrics, self.val_nonscalar_metrics, self.test_nonscalar_metrics = None, None, None
         if self._nonscalar_metrics:
             self.train_nonscalar_metrics = self._nonscalar_metrics.clone(prefix="train/")
             self.val_nonscalar_metrics = self._nonscalar_metrics.clone(prefix="val/")
@@ -268,7 +270,7 @@ class MetricTrackingLitModule(LightningModule, ABC):
 class GraphLitModule(MetricTrackingLitModule, ABC):
     """A `LightningModule` that provides the boilerplate code for GNNs."""
 
-    task_level: Literal["node", "graph"]
+    task_level: Literal["node", "graph", "edge"]
     """The type of task the model is designed for, used to generate an example input batch."""
 
     def __init__(

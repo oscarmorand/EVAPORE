@@ -53,31 +53,10 @@ def save_graph_to_json(graph: nx.Graph,
         - path (str): Output file path (e.g., 'graph.json')
     """
     # Convert graph to node-link data format
-    data = nx.readwrite.json_graph.node_link_data(graph, edges="links")
+    data = nx.readwrite.json_graph.node_link_data(graph, edges="edges")
 
     # Convert all numpy arrays to lists recursively
     data_list = ndarray_to_list(data)
-
-    if graph.is_directed():
-        try:
-            # Will raise NetworkXNoCycle if no cycle is found
-            cycle = nx.find_cycle(graph, orientation="original")
-            logging.info(f"Graph contains a cycle (directed): {cycle}")
-            logging.info(f"Node positions (for debugging): %s",
-                {node: data["pos"] for node, data in graph.nodes(data=True)},
-            )
-
-        except nx.exception.NetworkXNoCycle:
-            logging.info("Graph is directed and has no cycles")
-    else:
-        try:
-            # Will raise NetworkXNoCycle if no cycle is found
-            cycle = nx.find_cycle(graph)
-            logging.info(f"Graph contains a cycle (undirected): {cycle}")
-            node_positions = {node: data["pos"] for node, data in graph.nodes(data=True)}
-            logging.info(f"Node positions (for debugging): %s", node_positions)
-        except nx.exception.NetworkXNoCycle:
-            logging.info("Graph is undirected and has no cycles")
 
     # Save to JSON file
     with open(path, "w", encoding="utf-8") as f:
