@@ -1,5 +1,5 @@
 defaults:
-  - encoder: gat
+  - encoder: gcn
   - decoder: inner_product
   - optimizer: adamw
   - scheduler: step_lr

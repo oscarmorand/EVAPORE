@@ -1,0 +1,9 @@
+# @package _global_
+
+data:
+  dataset:
+    graph_transforms:
+      oversample_nodes_transform:
+        _target_: graph_neural_networks.data.dataset.dynamic.graph_transforms.OversampleNodesTransform
+        max_dist: 100.0
+        remove_original_edges: true

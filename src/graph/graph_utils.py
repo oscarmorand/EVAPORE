@@ -39,6 +39,51 @@ def find_max_radius_node(graph: nx.MultiGraph) -> int:
 
     return max_node
 
+def find_max_radius_node_patch_based(graph: nx.MultiGraph,
+                          patch_size: int = 100,
+                          base_image_shape: tuple[int, int] = None
+) -> int:
+    
+    H = np.ceil(base_image_shape[0] / patch_size).astype(np.int32)
+    W = np.ceil(base_image_shape[1] / patch_size).astype(np.int32)
+    cum_radius_map = np.zeros((H, W), dtype=np.float32)
+    max_radius_node = np.zeros((H, W), dtype=np.int32) - 1
+    max_radius_map = np.zeros((H, W), dtype=np.float32)
+
+    for node, data in graph.nodes(data=True):
+        y, x = data['pos']
+        radius = data['radius']
+        i = int(y // patch_size)
+        j = int(x // patch_size)
+        if 0 <= i < H and 0 <= j < W:
+            cum_radius_map[i, j] += radius
+
+            if radius > max_radius_map[i, j]:
+                max_radius_map[i, j] = radius
+                max_radius_node[i, j] = node
+
+    max_patch_i = np.argmax(cum_radius_map)
+    max_patch_coords = np.unravel_index(max_patch_i, cum_radius_map.shape)
+
+    max_patch_y, max_patch_x = max_patch_coords
+    max_node = max_radius_node[max_patch_y, max_patch_x]
+    
+    return max_node
+
+def get_graph_coord_range(graph: nx.MultiGraph, 
+                          dim: int = None
+) -> dict:
+    
+    if dim:
+        coords = [graph.nodes[n]['pos'][dim] for n in graph.nodes()]
+        return {'min': min(coords), 'max': max(coords)}
+    else:
+        ranges = {}
+        for d in range(2):
+            coords = [graph.nodes[n]['pos'][d] for n in graph.nodes()]
+            ranges[d] = {'min': min(coords), 'max': max(coords)}
+        return ranges
+
 
 def get_parallel_edges(graph: nx.MultiGraph) -> set:
     """

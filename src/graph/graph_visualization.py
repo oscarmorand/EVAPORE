@@ -7,13 +7,49 @@ Description: Functions for visualizing vascular graphs
 import numpy as np
 import networkx as nx
 import matplotlib.pyplot as plt
-from graph.graph_labeling import generate_graph_edge_radius_decay, generate_graph_topological_classification
+import logging
+
+from graph.graph_labeling import generate_graph_edge_radius_decay, generate_graph_topological_classification, generate_graph_depth
 from graph.graph_utils import find_max_radius_node, TopologicalClass
 from graph.graph_stats import graph_attribute_histogram, graph_depth_histogram, graph_hierarchy_histogram, graph_nodes_degree_histogram, graph_radius_histogram, get_histogram_difference
-import logging
+from graph_neural_networks.data.utils.pred_state import EdgePredState
 
 
 logger = logging.getLogger(__name__)
+
+
+def get_virtual_centerline(x0: int, y0: int, x1: int, y1: int) -> np.ndarray:
+    # find absolute differences
+    dx = abs(x0 - x1)
+    dy = abs(y0 - y1)
+
+    # find maximum difference
+    steps = max(dx, dy)
+
+    # calculate the increment in x and y
+    xinc = dx/steps * (1 if x1 > x0 else -1)
+    yinc = dy/steps * (1 if y1 > y0 else -1)
+
+    # start with 1st point
+    x = float(x0)
+    y = float(y0)
+
+    # make a list for coordinates
+    x_coorinates = []
+    y_coorinates = []
+
+    for i in range(steps):
+        # append the x,y coordinates in respective list
+        x_coorinates.append(x)
+        y_coorinates.append(y)
+
+        # increment the values
+        x = x + xinc
+        y = y + yinc
+
+    centerline = np.array([x_coorinates, y_coorinates]).T.astype(np.int32)
+    return centerline
+
 
 def get_graph_overlay_img(img: np.ndarray,
                           graph: nx.Graph,
@@ -38,7 +74,28 @@ def get_graph_overlay_img(img: np.ndarray,
     if show_edges:
         for u, v, data in graph.edges(data=True):
             centerline = np.array(data['centerline'])
-            viz[centerline[:,0], centerline[:,1]] = [255, 0, 0]
+            edge_pred_state = data.get('edge_pred_state', None)
+            virtual_edge = data.get('virtual_edge', False)
+            color = [255, 255, 255] # Default white
+            if edge_pred_state is not None:
+                if edge_pred_state in [EdgePredState.IN_PREDICTION.value, EdgePredState.IN_PREDICTION]:
+                    color = [0, 0, 255]  # Blue for IN_PREDICTION
+                elif edge_pred_state in [EdgePredState.NOT_IN_PREDICTION.value, EdgePredState.NOT_IN_PREDICTION]:
+                    color = [255, 0, 0]  # Red for NOT_IN_PREDICTION
+                else:
+                    color = [255, 255, 0]  # Yellow for unknown
+            else:
+                color = [0, 0, 255]  # Blue for edges without prediction state
+            if virtual_edge:
+                color = [0, 255, 255]  # Cyan for virtual edges
+                x0, y0 = graph.nodes[u]['pos']
+                x1, y1 = graph.nodes[v]['pos']
+                centerline = get_virtual_centerline(x0, y0, x1, y1)
+
+            if centerline is None:
+                print(centerline, edge_pred_state, virtual_edge)
+
+            viz[centerline[:,0], centerline[:,1]] = color
 
     # Overlay nodes in green
     for n, data in graph.nodes(data=True):
@@ -49,7 +106,8 @@ def get_graph_overlay_img(img: np.ndarray,
 
 def display_graph_overlay(img: np.ndarray,
                        graph: nx.Graph,
-                       show_edges: bool = True
+                       show_edges: bool = True,
+                       figsize: tuple[int, int] = (8, 8)
                        ) -> None:
     """
     Display the graph overlayed on the original image.
@@ -60,7 +118,7 @@ def display_graph_overlay(img: np.ndarray,
     """
     viz = get_graph_overlay_img(img, graph, show_edges)
 
-    plt.figure(figsize=(8, 8))
+    plt.figure(figsize=figsize)
     plt.imshow(viz)
     plt.axis('off')
     plt.show()
@@ -149,8 +207,8 @@ def display_graph_edge_depth(graph: nx.MultiGraph,
     """
 
     if 'depth' not in next(iter(graph.edges(data=True)))[2]:
-        logger.warning("Graph edges do not have 'depth' attribute.")
-        return
+        logger.info("Graph edges do not have 'depth' attribute, computing depth...")
+        graph = generate_graph_depth(graph)
 
     background = np.zeros((*img.shape, 3), dtype=np.uint8)
     plt.figure(figsize=(8, 8))
@@ -299,17 +357,17 @@ def display_topological_edge_classification(graph: nx.MultiGraph,
         img (np.ndarray): The original image.
     """
 
-    background = np.zeros((*img.shape, 3), dtype=np.uint8)
-    plt.figure(figsize=(8, 8))
-    plt.imshow(background, cmap='gray')
-
     if graph.number_of_edges() == 0:
-        logging.info("Graph has no edges to display.")
+        logging.warning("Graph has no edges to display.")
         return
 
     if not any('topological_class' in d for _, _, d in graph.edges(data=True)):
         logging.info("At least one edge is missing 'topological_class' attribute, computing classification...")
         graph = generate_graph_topological_classification(graph)
+
+    background = np.zeros((*img.shape, 3), dtype=np.uint8)
+    plt.figure(figsize=(8, 8))
+    plt.imshow(background, cmap='gray')
     
     for u, v in graph.edges():
         edge_data = graph.get_edge_data(u, v)

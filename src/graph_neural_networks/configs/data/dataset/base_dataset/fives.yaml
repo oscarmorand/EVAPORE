@@ -1,14 +1,14 @@
 # @package _global_
 
-defaults:
-  - optional /data/dataset/transform: null
-  - optional /data/dataset/transform@data.dataset.pre_transform: null
-
 data:
   dataset:
-    _target_: graph_neural_networks.data.FIVESGraphDataset
-    root: ${paths.data_dir}
-    name: ${op:call,${op:methodcaller,upper},${hydra:runtime.choices.data/dataset}}
+    base_dataset:
+      _target_: graph_neural_networks.data.FIVESGraphDataset
+      root: ${paths.data_dir}
+      name: ${op:call,${op:methodcaller,upper},${hydra:runtime.choices.data/dataset/base_dataset}}
+      height: 2048
+      width: 2048
+      raw_dir_name: raw
 
 hparams:
   # hparams.data.* values are meant to expose the constant properties of the `torch_geometric.data.Dataset` instance
@@ -20,6 +20,5 @@ hparams:
   data:
     # FIVES dataset contains 598 graphs
     num_graphs: 598
-    num_node_features: 3
     num_edge_features: 4
     task: binary

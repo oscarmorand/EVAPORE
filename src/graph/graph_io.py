@@ -4,6 +4,7 @@ Date: October 2025
 Description: Functions to read/write graphs in various formats (JSON, DOT, PNG).
 '''
 
+import enum
 import logging
 import numpy as np
 import json
@@ -38,6 +39,8 @@ def ndarray_to_list(obj):
         return [ndarray_to_list(item) for item in obj]
     elif isinstance(obj, tuple):
         return tuple(ndarray_to_list(item) for item in obj)
+    elif isinstance(obj, enum.Enum):
+        return obj.value
     else:
         return obj
 

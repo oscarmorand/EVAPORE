@@ -1,0 +1,11 @@
+# @package _global_
+
+data:
+  dataset:
+    graph_transforms:
+      add_distance_cc_edge_transform:
+        _target_: graph_neural_networks.data.dataset.dynamic.graph_transforms.AddDistanceCCEdgeTransform
+        distance_threshold: 20.0
+        cc_condition: true
+        only_connect_extremities: false
+        distance_att: euclidean

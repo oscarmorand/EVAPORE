@@ -5,7 +5,6 @@ from typing import Any
 
 import networkx as nx
 import numpy as np
-import pandas as pd
 import torch
 from torch_geometric.data import Data
 
@@ -37,7 +36,6 @@ def json_to_pyg(
     if nx_to_pyg_kwargs is None:
         nx_to_pyg_kwargs = {}
     nx_graph = json_to_networkx(json_path, line_graph, **json_to_nx_kwargs)
-    print(json_path)
     return networkx_to_pyg(nx_graph, target_attr, target_dtype, **nx_to_pyg_kwargs)
 
 

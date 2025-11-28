@@ -1,14 +1,21 @@
-from torch_geometric.data import InMemoryDataset, Dataset
+import os
+from torch_geometric.data import Dataset
 from typing import Any, Callable
 from pathlib import Path
 from torch_geometric.data import Data
 from torch_geometric.io import fs
 from graph_neural_networks.data.utils.io import json_to_pyg
+from graph_neural_networks.utils import RankedLogger
 
-class FIVESGraphDataset(Dataset):
+log = RankedLogger(__name__, rank_zero_only=True)
+
+class GraphDataset(Dataset):
     def __init__(self, 
-                 root: str = None, 
-                 name: str = "FIVES",
+                 root: str, 
+                 name: str,
+                 height: int,
+                 width: int,
+                 raw_dir_name: str,
                  transform: Callable | None = None, 
                  node_attrs_filter: list[str] | None = None,
                  edge_attrs_filter: list[str] | None = None,
@@ -16,6 +23,9 @@ class FIVESGraphDataset(Dataset):
                  json_to_nx_kwargs: dict[str, Any] | None = None,
                  n_debug : int = -1
     ) -> None:
+        self.classic_dataset = True
+        self.dynamic_dir = None
+
         self._json_to_nx_kwargs = json_to_nx_kwargs
 
         self._nx_to_pyg_kwargs = {
@@ -29,8 +39,25 @@ class FIVESGraphDataset(Dataset):
 
         root = Path(root) / name if root is not None else None
 
+        self.name = name
+
+        self.height = height
+        self.width = width
+
+        self.raw_dir_name = raw_dir_name
+
         super().__init__(root, transform)
     
+    @property
+    def raw_dir(self) -> str:
+        return os.path.join(self.root, self.raw_dir_name)
+
+    @property
+    def processed_dir(self) -> str:
+        if self.classic_dataset or self.dynamic_dir is None:
+            return os.path.join(self.root, 'processed')
+        return self.dynamic_dir
+
     @property
     def raw_file_names(self) -> list[str]:
         return [f.name for f in sorted(Path(self.raw_dir).glob("*.json"))]
@@ -38,7 +65,7 @@ class FIVESGraphDataset(Dataset):
     @property
     def processed_file_names(self) -> list[str]:
         return [f"{Path(f).stem}.pt" for f in self.raw_file_names]
-
+    
     def process(self) -> None:
         raw_paths = self.raw_paths
         processed_path = self.processed_paths

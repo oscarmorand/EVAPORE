@@ -74,8 +74,8 @@ class LinkPredictionLitModule(GraphLitModule):
         logits = self.forward(batch)
         out = self.decoder(logits, batch.edge_label_index)
         loss = self.criterion(out, batch.edge_label.float())
-        return loss, out
-    
+        return loss, (out, logits)
+
     def _shared_eval_step(
         self,
         batch: Batch,
@@ -84,15 +84,14 @@ class LinkPredictionLitModule(GraphLitModule):
         nonscalar_metrics: MetricCollection | None = None,
     ) -> torch.Tensor:
         # Perform the forward pass on the model and compute the loss
-        loss, out = self.model_step(batch)
+        loss, (out, logits) = self.model_step(batch)
 
         # Update the stateful loss and metrics
         loss_metric.update(loss)
         if scalar_metrics:
-            scalar_metrics.update(out, batch.edge_label)
+            scalar_metrics.update(preds=out, target=batch.edge_label, logits=logits, edge_label_index=batch.edge_label_index, edge_label=batch.edge_label)
         if nonscalar_metrics:
             nonscalar_metrics.update(out, batch.edge_label)
-
         return loss
     
     def _shared_epoch_end(

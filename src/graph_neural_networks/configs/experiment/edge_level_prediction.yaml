@@ -4,8 +4,9 @@
 # python train.py experiment=edge_level_prediction
 
 defaults:
-  - override /data: linksplit_lightning_dataset
-  - override /data/dataset: fives
+  - override /data: normal_split
+  - override /data/dataset: dynamic_dataset
+  - override /data/dataset/base_dataset: fives
   - override /model: edge_level
   # Metrics are part of the model, used to evaluate it during training, but they depend on the data task.
   # Intuitively, the metrics config should be interpolated based on the data config. However, limitations in the

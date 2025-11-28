@@ -1,0 +1,7 @@
+# @package _global_
+
+data:
+  dataset:
+    graph_transforms:
+      identity_transform:
+        _target_: graph_neural_networks.data.dataset.dynamic.graph_transforms.IdentityTransform

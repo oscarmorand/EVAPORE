@@ -45,40 +45,23 @@ def networkx_to_pyg(graph: nx.Graph,
     # Also default to "all" when empty lists are provided (i.e. attributes should be filtered out)
     # as PyG fails on empty lists of attributes ("RuntimeError: torch.cat(): expected a non-empty list of Tensors")
     # so we have to manually filter them out after conversion from NetworkX
-    remove_node_attrs = from_networkx_kwargs.get("group_node_attrs") == []
     if networkx_has_attributes(graph, "nodes") and not from_networkx_kwargs.get("group_node_attrs"):
         from_networkx_kwargs["group_node_attrs"] = "all"
-    remove_edge_attrs = from_networkx_kwargs.get("group_edge_attrs") == []
     if networkx_has_attributes(graph, "edges") and not from_networkx_kwargs.get("group_edge_attrs"):
         from_networkx_kwargs["group_edge_attrs"] = "all"
 
-    # Catch `group_graph_attrs`, as it is not supported by `from_networkx` and we mimic the expected behavior here
-    group_graph_attrs = from_networkx_kwargs.pop("group_graph_attrs", None)
+    new_kwargs = {}
+    if from_networkx_kwargs.get("group_node_attrs") == []:
+        new_kwargs["group_node_attrs"] = None
+    if from_networkx_kwargs.get("group_edge_attrs") == []:
+        new_kwargs["group_edge_attrs"] = None
 
-    data = from_networkx(graph, **from_networkx_kwargs)
-
-    # If all node/edge attributes should be filtered out, handle it manually after PyG conversion
-    if data.x is not None and remove_node_attrs:
-        # If we remove node attributes, explicitly set `num_nodes` (while it can still be inferred) to avoid warning:
-        # "Unable to accurately infer 'num_nodes' from the attribute set"
-        data.num_nodes = data.num_nodes
-        data.x = None
-    if data.edge_attr is not None and remove_edge_attrs:
-        data.edge_attr = None
+    data = from_networkx(graph, **new_kwargs)
 
     if target_attr:
         target_label = graph.graph[target_attr]
         data.y = torch.tensor(target_label, dtype=target_dtype)
-
-    # Manually group graph attributes automatically added by `from_networkx` into a single `graph_attr` attr
-    if group_graph_attrs is None:
-        # By default, group all graph attributes except the target attribute
-        group_graph_attrs = graph.graph.keys() - {target_attr}
-    if group_graph_attrs:
-        # If graph attributes are present, convert/cast PyG `Data` to `GraphAttrData` to handle batching properly
-        data = GraphAttrData.from_dict(data.to_dict())
-        data.graph_attr = torch.stack([getattr(data, graph_attr) for graph_attr in group_graph_attrs])
-
+        
     # After having grouped requested graph attributes, remove leftover graph attributes from `data`
     return _clean_data_attributes(data)
 
@@ -338,6 +321,6 @@ def _clean_data_attributes(data: Data) -> Data:
         PyG `Data` object cleaned from non-essential attributes
     """
     for key in data.keys():  # noqa: SIM118
-        if key not in ["x", "y", "edge_index", "edge_attr", "graph_attr", "pos", "time", "num_nodes"]:
+        if key not in ["x", "y", "edge_index", "edge_attr", "graph_attr", "time", "num_nodes"]:
             delattr(data, key)
     return data
