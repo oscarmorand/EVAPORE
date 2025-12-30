@@ -1,0 +1,4 @@
+mse:
+  _target_: torchmetrics.MeanSquaredError
+  squared: true
+  num_outputs: 1

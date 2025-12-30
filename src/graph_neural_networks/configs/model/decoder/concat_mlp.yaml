@@ -1,0 +1,6 @@
+defaults:
+  - default_parameterized_decoder
+
+_target_: graph_neural_networks.models.ConcatMLPDecoder
+hidden_dim: 128
+symmetric: false

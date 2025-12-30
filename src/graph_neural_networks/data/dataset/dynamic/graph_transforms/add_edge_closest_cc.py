@@ -9,9 +9,21 @@ class AddEdgeClosestCCTransform(GraphTransform):
     def __init__(self, only_one_edge_per_cc: bool = True):
         self.only_one_edge_per_cc = only_one_edge_per_cc
 
+    def recompute_cc(self, G: nx.Graph, in_pred_G: nx.Graph = None) -> list:
+        connected_components = list(nx.connected_components(G if in_pred_G is None else in_pred_G))
+        cc_map = {}
+        for cc in connected_components:
+            for node in cc:
+                cc_map[node] = cc
+        cc_n_count = [len(cc) for cc in connected_components]
+        small_ccs = [cc for cc in connected_components if len(cc) < max(cc_n_count)]
+        return connected_components, cc_map, small_ccs
+        
+
     def add_edge_closest_cc(self, graph: nx.Graph, in_pred_graph: nx.Graph = None) -> nx.Graph:
         G = graph.copy()
         in_pred_G = (in_pred_graph.copy()) if in_pred_graph is not None else None
+        add_pred_state = in_pred_graph is not None
 
         edge_counter = max([data['id'] for _, _, data in graph.edges(data=True)]) + 1
 
@@ -19,13 +31,7 @@ class AddEdgeClosestCCTransform(GraphTransform):
         connected_components = list(nx.connected_components(graph if in_pred_graph is None else in_pred_graph))
 
         while len(connected_components) > 1:
-            cc_map = {}
-            for cc in connected_components:
-                for node in cc:
-                    cc_map[node] = cc
-
-            cc_n_count = [len(cc) for cc in connected_components]
-            small_ccs = [cc for cc in connected_components if len(cc) < max(cc_n_count)]
+            connected_components, cc_map, small_ccs = self.recompute_cc(G, in_pred_G)
 
             for small_cc in small_ccs:
                 global_closest_distance = float('inf')
@@ -63,18 +69,18 @@ class AddEdgeClosestCCTransform(GraphTransform):
                             global_closest_node1_id = node1_id
                             global_closest_node2_id = closest_node_id
                     else:
-                        G = add_virtual_edge(G, node1_id, closest_node_id, edge_id=edge_counter, length=distance_att)
+                        G = add_virtual_edge(G, node1_id, closest_node_id, edge_id=edge_counter, length=distance_att, add_edge_pred_state=add_pred_state)
                         if in_pred_G is not None:
-                            in_pred_G = add_virtual_edge(in_pred_G, node1_id, closest_node_id)
+                            in_pred_G = add_virtual_edge(in_pred_G, node1_id, closest_node_id, add_edge_pred_state=False)
+                        connected_components, cc_map, small_ccs = self.recompute_cc(G, in_pred_G)
                         edge_counter += 1
 
                 if self.only_one_edge_per_cc:
-                    G = add_virtual_edge(G, global_closest_node1_id, global_closest_node2_id, edge_id=edge_counter, length=global_closest_distance)
+                    G = add_virtual_edge(G, global_closest_node1_id, global_closest_node2_id, edge_id=edge_counter, length=global_closest_distance, add_edge_pred_state=add_pred_state)
                     if in_pred_G is not None:
-                        in_pred_G = add_virtual_edge(in_pred_G, global_closest_node1_id, global_closest_node2_id)
+                        in_pred_G = add_virtual_edge(in_pred_G, global_closest_node1_id, global_closest_node2_id, add_edge_pred_state=False)
+                    connected_components, cc_map, small_ccs = self.recompute_cc(G, in_pred_G)
                     edge_counter += 1
-
-            connected_components = list(nx.connected_components(G if in_pred_G is None else in_pred_G))
 
         return G
 

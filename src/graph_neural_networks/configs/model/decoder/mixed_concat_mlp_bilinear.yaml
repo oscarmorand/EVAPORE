@@ -1,0 +1,6 @@
+defaults:
+  - concat_mlp@concat_mlp
+  - bilinear@bilinear
+
+_target_: graph_neural_networks.models.MixedConcatMLPBilinearDecoder
+concat_mlp_ratio: 0.5

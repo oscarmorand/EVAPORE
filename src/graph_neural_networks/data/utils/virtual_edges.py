@@ -1,5 +1,6 @@
 import networkx as nx
 import torch
+
 from graph_neural_networks.data.utils.pred_state import EdgePredState
 
 def setup_non_virtual_edges(graph: nx.Graph) -> nx.Graph:
@@ -19,7 +20,7 @@ def setup_non_virtual_edges(graph: nx.Graph) -> nx.Graph:
     return G
     
 
-def add_virtual_edge(graph: nx.Graph, node1_id, node2_id, edge_id: int = None, length=None) -> nx.Graph:
+def add_virtual_edge(graph: nx.Graph, node1_id, node2_id, edge_id: int = None, length=None, add_edge_pred_state: bool = True) -> nx.Graph:
     """Adds a virtual edge to the graph with specified attributes.
 
     Args:
@@ -32,18 +33,17 @@ def add_virtual_edge(graph: nx.Graph, node1_id, node2_id, edge_id: int = None, l
 
     G = graph.copy()
 
-    G.add_edge(node1_id, 
-                   node2_id,
-                   id=edge_id,
-                   name=f"virtual_edge_{edge_id}",
-                   virtual_edge=True, 
-                   length=length,
-                   centerline=[],
-                   radius=[],
-                   min_radius=None,
-                   max_radius=None,
-                   mean_radius=None,
-                   edge_pred_state=EdgePredState.IN_PREDICTION)
+    if add_edge_pred_state:
+        G.add_edge(node1_id, 
+                    node2_id,
+                    id=edge_id, name=f"virtual_edge_{edge_id}", virtual_edge=True, length=length,
+                    centerline=[], radius=[], min_radius=None, max_radius=None, mean_radius=None,
+                    edge_pred_state=EdgePredState.IN_PREDICTION)
+    else:
+        G.add_edge(node1_id, 
+                    node2_id,
+                    id=edge_id, name=f"virtual_edge_{edge_id}", virtual_edge=True, length=length,
+                    centerline=[], radius=[], min_radius=None, max_radius=None, mean_radius=None)
     
     return G
 

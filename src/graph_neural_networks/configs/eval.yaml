@@ -4,11 +4,17 @@ defaults:
   - _self_
   - data: ??? # no sane default can be provided here, data has to be provided by the user
   - model: ??? # no sane default can be provided here, model has to be provided by the user
-  - logger: null
+  - reconstruction: default
+  - callbacks: default
+  - model/metrics/vascular_segmentation@image_metrics
+  - logger: wandb
   - trainer: default
   - paths: default
   - extras: default
   - hydra: default
+
+  - experiment: edge_level_prediction
+
   # optional local config for machine/user specific settings
   # it's optional since it doesn't need to exist and is excluded from version control
   - optional local: default

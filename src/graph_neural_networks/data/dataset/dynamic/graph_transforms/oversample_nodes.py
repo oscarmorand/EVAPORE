@@ -25,7 +25,7 @@ class OversampleNodesTransform:
             new_edge_sampled = False
             for _, data in graph.get_edge_data(u, v).items():
                 edge_pred_state = data.get('edge_pred_state', None)
-                if edge_pred_state == EdgePredState.NOT_IN_PREDICTION:
+                if edge_pred_state in [EdgePredState.NOT_IN_PREDICTION, EdgePredState.NOT_IN_PREDICTION.value]:
                     continue
                 centerline = np.array(data['centerline'])
                 radius = np.array(data['radius'])
@@ -86,22 +86,19 @@ class OversampleNodesTransform:
                 for i in range(len(node_ids) - 1):
                     i0, i1 = indexes[i], indexes[i + 1]
                     n0, n1 = node_ids[i], node_ids[i + 1]
-                    local_length = lengths[i]
-                    local_centerline = centerline[i0:i1 + 1]
+                    name = f"edge_{edge_counter}"
+                    local_length = float(lengths[i])
+                    local_centerline = centerline[i0:i1 + 1].tolist()
                     local_radius = radius[i0:i1 + 1]
-                    G.add_edge(
-                        n0,
-                        n1,
-                        id=edge_counter,
-                        name=f"edge_{edge_counter}",
-                        centerline=local_centerline.tolist(), 
-                        radius=local_radius.tolist(),
-                        length=float(local_length),
-                        min_radius=np.min(local_radius),
-                        max_radius=np.max(local_radius),
-                        mean_radius=np.mean(local_radius),
-                        edge_pred_state=edge_pred_state
-                    )
+                    min_radius = np.min(local_radius)
+                    max_radius = np.max(local_radius)
+                    mean_radius = np.mean(local_radius)
+                    local_radius = local_radius.tolist()
+
+                    if edge_pred_state is not None:
+                        G.add_edge(n0, n1,id=edge_counter, name=name, centerline=local_centerline, radius=local_radius, length=local_length, min_radius=min_radius, max_radius=max_radius, mean_radius=mean_radius, edge_pred_state=edge_pred_state)
+                    else:
+                        G.add_edge(n0, n1,id=edge_counter, name=name, centerline=local_centerline, radius=local_radius, length=local_length, min_radius=min_radius, max_radius=max_radius, mean_radius=mean_radius)
                     edge_counter += 1
                     new_edge_sampled = True
 

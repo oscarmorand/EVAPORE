@@ -1,0 +1,2 @@
+cldice:
+  _target_: graph_neural_networks.models.metrics.ClDice

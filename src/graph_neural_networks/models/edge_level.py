@@ -8,6 +8,8 @@ from torchmetrics import Metric, MetricCollection, MetricTracker
 
 from graph_neural_networks.models import GraphLitModule
 from graph_neural_networks.utils.logging_utils import log_nonscalar_metrics, pad_keys
+from graph_neural_networks.models.edge_query import EdgeQuery
+from graph_neural_networks.models.edge_predictor import EdgePredictor
 import wandb
 
 class LinkPredictionLitModule(GraphLitModule):
@@ -20,6 +22,8 @@ class LinkPredictionLitModule(GraphLitModule):
         task: Literal["binary"],
         encoder: nn.Module,
         decoder: nn.Module,
+        edge_query: EdgeQuery,
+        edge_predictor: EdgePredictor,
         *args,
         **kwargs,
     ) -> None:
@@ -36,10 +40,12 @@ class LinkPredictionLitModule(GraphLitModule):
 
         # this line allows to access init params with 'self.hparams' attribute
         # also ensures init params will be stored in ckpt
-        self.save_hyperparameters(ignore=["encoder", "decoder"])
+        self.save_hyperparameters(ignore=["encoder", "decoder", "edge_query", "edge_predictor"])
 
         self.encoder = encoder
         self.decoder = decoder
+        self.edge_query = edge_query
+        self.edge_predictor = edge_predictor
 
     def forward(self, data: Batch) -> torch.Tensor:
         """Perform a forward pass through the model on a batch of graphs.
@@ -48,7 +54,7 @@ class LinkPredictionLitModule(GraphLitModule):
             data: A batch of graphs, represented as one big (disconnected) graph.
 
         Returns:
-            The predicted logits for the input graphs in the batch.
+            The predicted node embeddings for the input graphs in the batch.
         """
         x, batch, batch_size = data.x, data.batch, data.batch_size
         # Cast input features that must be floats to floats
@@ -66,15 +72,31 @@ class LinkPredictionLitModule(GraphLitModule):
         """Perform a single model step on a batch of data.
 
         Args:
-            batch: A batch of data containing the input tensor of images and target labels.
+            batch: A batch of data containing the input tensor of graph data.
 
         Returns:
-            A pair of tensors containing the loss and the (unnormalized) predictions (i.e. logits), respectively.
+            A tuple containing the loss tensor and a tuple of (node embeddings, edge scores).
         """
         logits = self.forward(batch)
         out = self.decoder(logits, batch.edge_label_index)
         loss = self.criterion(out, batch.edge_label.float())
         return loss, (out, logits)
+    
+    def predict_step(self, *args, **kwargs):
+        """Perform a prediction step on a batch of data.
+
+        Returns:
+            A tuple containing the predicted new edges and their scores.
+        """
+        batch = kwargs.get("batch", args[0])
+        y = self.forward(batch)
+        print(batch)
+        query_edge_index = self.edge_query(batch)
+        print(query_edge_index.shape)
+        edges_scores = self.decoder(y, query_edge_index)
+        normalized_edges_scores = torch.sigmoid(edges_scores)
+        new_edges, new_edges_scores = self.edge_predictor(normalized_edges_scores, query_edge_index)
+        return new_edges, new_edges_scores
 
     def _shared_eval_step(
         self,

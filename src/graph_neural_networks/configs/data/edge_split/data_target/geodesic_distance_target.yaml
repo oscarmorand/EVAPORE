@@ -1,0 +1,18 @@
+# @package _global_
+
+defaults:
+  - override /model/metrics: distance_prediction
+
+data:
+  edge_split:
+    data_target:
+      _target_: graph_neural_networks.data.GeodesicDistanceTarget
+
+hparams:
+  data:
+    task: distance_regression
+
+model:
+  criterion:
+    _target_: graph_neural_networks.models.GaussianNormalizedDistanceBCELoss
+    sigma: 5.0

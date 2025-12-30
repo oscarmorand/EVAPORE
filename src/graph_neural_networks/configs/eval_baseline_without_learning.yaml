@@ -1,0 +1,16 @@
+# @package _global_
+
+defaults:
+  - data: inductive_split
+  - model: edge_level_baseline_without_learning
+  - reconstruction: default
+  - model/metrics/vascular_segmentation@image_metrics
+  - logger: wandb
+  - paths: default
+  - hydra: default
+
+  - override /data/edge_split: no_edge_split
+  - override /data/dataset: dynamic_dataset
+  - override /data/dataset/base_dataset: fives
+
+task_name: "eval_baseline_without_learning"

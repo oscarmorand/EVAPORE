@@ -1,6 +1,8 @@
 defaults:
-  - encoder: gcn
-  - decoder: inner_product
+  - encoder: no_encoder # gcn, gat, transformer_gnn, no_encoder
+  - decoder: concat_mlp # inner_product, concat_mlp, bilinear, mixed_concat_mlp_bilinear, hadamard_mlp
+  - edge_query: edge_query_virtual_edges
+  - edge_predictor: edge_predictor_thresholded
   - optimizer: adamw
   - scheduler: step_lr
   # Metrics are part of the model, used to evaluate it during training, but they depend on the data task.
@@ -13,9 +15,6 @@ _target_: graph_neural_networks.models.LinkPredictionLitModule
 task: ${hparams.data.task}
 num_node_features: ${oc.select:hparams.data.num_node_features}
 num_edge_features: ${oc.select:hparams.data.num_edge_features}
-
-encoder:
-  out_channels: null
 
 criterion:
   # if task is `regression` -> `torch.nn.L1Loss`

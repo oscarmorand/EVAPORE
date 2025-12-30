@@ -1,0 +1,14 @@
+# @package _global_
+
+data:
+  edge_split:
+    data_target:
+      _target_: graph_neural_networks.data.BinaryLinkTarget
+
+hparams:
+  data:
+    task: binary
+
+model:
+  criterion:
+    _target_: torch.nn.BCEWithLogitsLoss

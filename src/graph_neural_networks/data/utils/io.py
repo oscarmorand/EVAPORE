@@ -40,7 +40,7 @@ def json_to_pyg(
 
 
 def json_to_networkx(
-    json_path: Path, line_graph: bool = False, directed: bool = False, **node_link_graph_kwargs
+    json_path: Path, line_graph: bool = False, directed: bool = False, recompute_nodes_id: bool = False, **node_link_graph_kwargs
 ) -> nx.Graph:
     """Parses a JSON file as the node-link data describing a NetworkX `Graph`.
 
@@ -61,6 +61,9 @@ def json_to_networkx(
     graph = nx.node_link_graph(json_graph, directed=directed, **node_link_graph_kwargs or {"edges": "edges"})
     if line_graph:
         graph = networkx_line_graph(graph)
+    if recompute_nodes_id:
+        mapping = {old_id: new_id for new_id, old_id in enumerate(graph.nodes)}
+        graph = nx.relabel_nodes(graph, mapping)
     return graph
 
 

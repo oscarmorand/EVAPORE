@@ -1,8 +1,10 @@
 defaults:
-  - metrics/acc
-  - metrics/confusion_matrix
-  - metrics/auroc
-  - metrics/mrr
+  - metrics/binary_accuracy
+  - metrics/binary_confusion_matrix
+  - metrics/binary_auroc
+  #- metrics/mrr
+  - metrics/binary_precision
+  - metrics/binary_recall
 
 _target_: torchmetrics.MetricCollection
 # since MetricCollection does not recognize OmegaConf containers as their corresponding Python primitives

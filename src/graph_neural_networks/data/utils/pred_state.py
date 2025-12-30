@@ -10,9 +10,9 @@ class EdgePredState(Enum):
     IN_PREDICTION = 1
 
 source_name_to_attr = {
-        "not_in_p_graph": EdgePredState.NOT_IN_PREDICTION,
-        "in_p_graph": EdgePredState.IN_PREDICTION
-} 
+    "not_in_p_graph": EdgePredState.NOT_IN_PREDICTION,
+    "in_p_graph": EdgePredState.IN_PREDICTION
+}
 
 def add_edges_from_graph(combined_graph, source_graph, source_name, combined_node_coords_to_node): 
     G = combined_graph.copy()

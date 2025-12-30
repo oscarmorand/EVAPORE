@@ -4,6 +4,10 @@ from typing import Any, Callable
 from pathlib import Path
 from torch_geometric.data import Data
 from torch_geometric.io import fs
+from PIL import Image
+import numpy as np
+
+from graph_neural_networks.data.utils.io import json_to_networkx
 from graph_neural_networks.data.utils.io import json_to_pyg
 from graph_neural_networks.utils import RankedLogger
 
@@ -16,6 +20,7 @@ class GraphDataset(Dataset):
                  height: int,
                  width: int,
                  raw_dir_name: str,
+                 infer_dir_name: str,
                  transform: Callable | None = None, 
                  node_attrs_filter: list[str] | None = None,
                  edge_attrs_filter: list[str] | None = None,
@@ -45,6 +50,7 @@ class GraphDataset(Dataset):
         self.width = width
 
         self.raw_dir_name = raw_dir_name
+        self.infer_dir_name = infer_dir_name
 
         super().__init__(root, transform)
     
@@ -57,6 +63,26 @@ class GraphDataset(Dataset):
         if self.classic_dataset or self.dynamic_dir is None:
             return os.path.join(self.root, 'processed')
         return self.dynamic_dir
+    
+    @property
+    def gt_dir(self) -> str:
+        return os.path.join(self.root, 'gt')
+
+    @property
+    def img_dir(self) -> str:
+        return os.path.join(self.root, 'img')
+    
+    @property
+    def pred_dir(self) -> str:
+        return os.path.join(self.root, 'pred')
+
+    @property
+    def feature_maps_dir(self) -> str:
+        return os.path.join(self.root, 'feature_maps')
+    
+    @property
+    def probability_maps_dir(self) -> str:
+        return os.path.join(self.root, 'probability_maps')
 
     @property
     def raw_file_names(self) -> list[str]:
@@ -97,6 +123,57 @@ class GraphDataset(Dataset):
         processed_path = self.processed_paths[idx]
         data = fs.torch_load(processed_path)
         return data
+
+    def get_raw(self, idx: int) -> Any:
+        raw_path = self.raw_paths[idx]
+        nx_graph = json_to_networkx(raw_path, False, {})
+        return nx_graph
+    
+    def get_nx(self, idx: int) -> Any:
+        if self.classic_dataset or self.dynamic_dir is None:
+            return self.get_raw(idx)
+        nx_path = os.path.join(self.dynamic_dir, f"{Path(self.raw_file_names[idx]).stem}.json")
+        nx_graph = json_to_networkx(nx_path, False, {})
+        return nx_graph
+    
+    def get_probability_map(self, idx: int) -> Any:
+        probability_map_path = os.path.join(self.probability_maps_dir, f"{Path(self.raw_file_names[idx]).stem}.pt")
+        probability_map = fs.torch_load(probability_map_path)
+        return probability_map
+    
+    def get_gt(self, idx: int) -> Any:
+        gt_path = os.path.join(self.gt_dir, f"{Path(self.raw_file_names[idx]).stem}.png")
+        gt = np.array(Image.open(gt_path))
+        if len(gt.shape) == 3:
+            gt = gt[:, :, 0]
+        return gt
+    
+    def get_img(self, idx: int) -> Any:
+        img_path = os.path.join(self.img_dir, f"{Path(self.raw_file_names[idx]).stem}.png")
+        img = np.array(Image.open(img_path))
+        return img
+    
+    def get_pred(self, idx: int) -> Any:
+        pred_path = os.path.join(self.pred_dir, f"{Path(self.raw_file_names[idx]).stem}.png")
+        pred = np.array(Image.open(pred_path))
+        return pred
+    
+    def get_all_from_keys(self, idx: int, keys: list[str]) -> dict[str, Any]:
+        keys_to_getters = {
+            "processed": self.get,
+            "nx": self.get_nx,
+            "probability_map": self.get_probability_map,
+            "gt": self.get_gt,
+            "img": self.get_img,
+            "pred": self.get_pred,
+        }
+        result = {}
+        for key in keys:
+            if key in keys_to_getters:
+                result[key] = keys_to_getters[key](idx)
+            else:
+                raise ValueError(f"Key '{key}' is not recognized.")
+        return result
 
     def __iter__(self):
         return self

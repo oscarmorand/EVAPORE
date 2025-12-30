@@ -5,7 +5,7 @@ defaults:
   - /data/dataset/extracted: qtseg # in (unet, radiomics, qtseg)
   - /data/dataset/graph_transforms: [
         oversample_nodes,
-        compute_distance_matrix,
+        #compute_distance_matrix,
         add_edge_closest_cc,
       ] # list of graph transforms to apply (sublist of: [identity, add_distance_cc_edge, add_edge_closest_cc, add_supernodes, oversample_nodes, compute_distance_matrix])
 
@@ -22,10 +22,10 @@ data:
       aggregation: mean # in (mean, max, min, sum)
       sampling: radius_square # in (double_radius_square, radius_square, single_pixel)
 
-    force_recompute: true
+    force_recompute: false
 
     base_dataset:
-      raw_dir_name: raw_pred_state
+      raw_dir_name: raw_pred # raw, raw_pred, raw_pred_state
 
 hparams:
   data:

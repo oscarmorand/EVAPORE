@@ -1,0 +1,2 @@
+_target_: graph_neural_networks.models.edge_query.EdgeQueryMaxDistance
+max_dist: 200.0

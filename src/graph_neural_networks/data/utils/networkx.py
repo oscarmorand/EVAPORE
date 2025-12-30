@@ -1,11 +1,16 @@
 import warnings
 from typing import Any, Literal
-
 import networkx as nx
 import numpy as np
 import torch
 from torch_geometric.data import Data
 from torch_geometric.utils import from_networkx
+import json
+import enum
+
+from graph_neural_networks.utils import RankedLogger
+
+log = RankedLogger(__name__, rank_zero_only=True)
 
 
 class GraphAttrData(Data):
@@ -24,6 +29,44 @@ class GraphAttrData(Data):
             return None
         return super().__cat_dim__(key, value, *args, **kwargs)
 
+
+def serialize_nx_graph(obj):
+    if isinstance(obj, np.ndarray):
+        return obj.tolist()
+    elif isinstance(obj, np.floating):
+        return float(obj)
+    elif isinstance(obj, np.integer):
+        return int(obj)
+    elif isinstance(obj, dict):
+        return {key: serialize_nx_graph(value) for key, value in obj.items()}
+    elif isinstance(obj, list):
+        return [serialize_nx_graph(item) for item in obj]
+    elif isinstance(obj, tuple):
+        return tuple(serialize_nx_graph(item) for item in obj)
+    elif isinstance(obj, enum.Enum):
+        return obj.value
+    else:
+        return obj
+
+def save_graph_to_json(graph: nx.Graph,
+                       path: str
+                       ) -> None:
+    """
+    Save a NetworkX graph (directed or undirected) to JSON format.
+
+    Parameters:
+        - graph (NetworkX.Graph): graph to save
+        - path (str): Output file path (e.g., 'graph.json')
+    """
+    # Convert graph to node-link data format
+    data = nx.readwrite.json_graph.node_link_data(graph, edges="edges")
+
+    # Convert all numpy arrays to lists recursively
+    data_list = serialize_nx_graph(data)
+
+    # Save to JSON file
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(data_list, f, indent=4)
 
 def networkx_to_pyg(graph: nx.Graph, 
                     target_attr: str | None = None, 
@@ -324,3 +367,36 @@ def _clean_data_attributes(data: Data) -> Data:
         if key not in ["x", "y", "edge_index", "edge_attr", "graph_attr", "time", "num_nodes"]:
             delattr(data, key)
     return data
+
+
+def check_all_edges_have_same_attributes(graph: nx.Graph) -> None:
+    keys = None
+    all_edges_have_same_attributes = True
+    for u, v, data in graph.edges(data=True):
+        if keys is None:
+            keys = data.keys()
+        for key in keys:
+            if key not in data:
+                all_edges_have_same_attributes = False
+                log.warning(f"Edge ({u}, {v}) is missing key '{key}'.")
+        for key in data.keys():
+            if key not in keys:
+                all_edges_have_same_attributes = False
+                log.warning(f"Edge ({u}, {v}) has an unexpected key '{key}'.")
+    return all_edges_have_same_attributes
+
+def check_all_nodes_have_same_attributes(graph: nx.Graph) -> None:
+    keys = None
+    all_nodes_have_same_attributes = True
+    for n, data in graph.nodes(data=True):
+        if keys is None:
+            keys = data.keys()
+        for key in keys:
+            if key not in data:
+                all_nodes_have_same_attributes = False
+                log.warning(f"Node {n} is missing key '{key}'.")
+        for key in data.keys():
+            if key not in keys:
+                all_nodes_have_same_attributes = False
+                log.warning(f"Node {n} has an unexpected key '{key}'.")
+    return all_nodes_have_same_attributes

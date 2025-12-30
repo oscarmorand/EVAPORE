@@ -4,7 +4,8 @@
 # python train.py experiment=edge_level_prediction
 
 defaults:
-  - override /data: normal_split
+  - override /data: inductive_split # inductive_split, transductive_random_split
+  - override /data/edge_split: no_edge_split # random_edge_split, no_edge_split, custom_edge_split
   - override /data/dataset: dynamic_dataset
   - override /data/dataset/base_dataset: fives
   - override /model: edge_level
@@ -12,16 +13,20 @@ defaults:
   # Intuitively, the metrics config should be interpolated based on the data config. However, limitations in the
   # interpolation capabilities of Hydra make this impractical.
   # In this context, the least bad solution is to assign the metrics manually at the experiment (or main config) level.
-  - override /model/metrics: binary_classification
+  - override /model/metrics: binary_classification # binary_classification, distance_prediction
 
 # all parameters below will be merged with parameters from default configurations set above
 # this allows you to overwrite only specified parameters
 
 tags:
-  - ${model.encoder._target_} # automatically tag with the chosen model architecture
-  - ${hydra:runtime.choices.experiment} # automatically tag with the chosen experiment
-  - ${hydra:runtime.choices.model} # automatically tag with the chosen model/task
-  - ${hydra:runtime.choices.data/dataset} # automatically tag with the chosen dataset
+  - +${model.encoder._target_} # automatically tag with the chosen model architecture
+  - +${hydra:runtime.choices.experiment} # automatically tag with the chosen experiment
+  - +${hydra:runtime.choices.data/dataset} # automatically tag with the chosen dataset
+
+logger:
+  wandb:
+    tags: ${tags}
+    group: ${tags.0} # by default, group runs by the first tag
 
 seed: 12345
 
@@ -32,11 +37,6 @@ trainer:
 data:
   batch_size: 1
   num_workers: 7
-
-logger:
-  wandb:
-    tags: ${tags}
-    group: ${tags.0} # by default, group runs by the first tag
 
 # Assert data config values are compatible with the model
 # Implementing these assertions in the config file allows Hydra to check them

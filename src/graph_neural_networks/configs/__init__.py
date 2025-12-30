@@ -61,6 +61,8 @@ def _graph_level_criterion_resolver(task: str) -> str:
             return "torch.nn.BCEWithLogitsLoss"
         case "binary":
             return "torch.nn.BCEWithLogitsLoss"
+        case "distance_regression":
+            return "graph_neural_networks.models.GaussianNormalizedDistanceL1Loss"
         case _:
             raise ValueError(
                 f"Unsupported task type: {task}. Supported tasks are: regression, multiclass, multilabel, binary."

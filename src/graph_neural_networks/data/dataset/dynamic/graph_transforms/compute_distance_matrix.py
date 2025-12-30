@@ -6,8 +6,9 @@ import warnings
 from graph_neural_networks.data.dataset.graph_wrapper import GraphWrapper
 
 class ComputeDistanceMatrixTransform:
-    def __init__(self):
+    def __init__(self, skip_first_neighbor: bool = True):
         super().__init__()
+        self.skip_first_neighbor = skip_first_neighbor
 
     def compute_distance_matrix_by_graph_breadth_first(self, graph: nx.Graph) -> np.ndarray:
         N = graph.number_of_nodes()
@@ -19,12 +20,12 @@ class ComputeDistanceMatrixTransform:
             start_index = nodes_to_index[start_node]
 
             # Min heap for priority queue
-            pq = [(0.0, start_node)]
+            pq = [(0.0, start_node, 0)]  # (distance, node, depth_level)
             distances = {n: float('inf') for n in graph.nodes()}
             distances[start_node] = 0.0
 
             while pq:
-                current_dist, current_node = heapq.heappop(pq)
+                current_dist, current_node, depth_level = heapq.heappop(pq)
                 current_index = nodes_to_index[current_node]
 
                 # If already found a shorter path skip
@@ -33,18 +34,23 @@ class ComputeDistanceMatrixTransform:
 
                 # Write symmetric distances
                 distance_matrix[start_index, current_index] = current_dist
-                distance_matrix[current_index, start_index] = current_dist
+                if not self.skip_first_neighbor:
+                    distance_matrix[current_index, start_index] = current_dist
 
                 for neighbor in graph.neighbors(current_node):
                     edge_data = graph.get_edge_data(current_node, neighbor)
 
-                    # Find shortest edge between the two nodes
-                    min_length = min(d['length'] for d in edge_data.values())
+                    if self.skip_first_neighbor and depth_level == 0:
+                        min_length = 0.0
+                    else:
+                        # Find shortest edge between the two nodes
+                        min_length = min(d['length'] for d in edge_data.values())
+                        
                     new_dist = current_dist + min_length
 
                     if new_dist < distances[neighbor]:
                         distances[neighbor] = new_dist
-                        heapq.heappush(pq, (new_dist, neighbor))
+                        heapq.heappush(pq, (new_dist, neighbor, depth_level + 1))
 
         return distance_matrix
 
@@ -65,4 +71,5 @@ class ComputeDistanceMatrixTransform:
     def _build_config(self) -> dict:
         return {
             "_target_": self.__class__.__name__,
+            "skip_first_neighbor": self.skip_first_neighbor
         }

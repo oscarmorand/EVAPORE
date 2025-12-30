@@ -1,0 +1,2 @@
+_target_: graph_neural_networks.models.edge_predictor.EdgePredictorThresholded
+threshold: 0.5
