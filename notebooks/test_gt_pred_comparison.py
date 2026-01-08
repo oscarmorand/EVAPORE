@@ -142,7 +142,7 @@ for n_g_1, n_g_2, data_g in gt_graph.edges(data=True):
 
 print("Number of ground truth edges:", gt_graph.number_of_edges())
 print("Number of matching edges:", len(edges_match))        
-            
+
 
 # %%
 plt.figure(figsize=(20,20))
