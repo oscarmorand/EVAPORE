@@ -39,8 +39,8 @@ class TwoPointsApp:
     def __init__(self, path=None):
         self.path_methods: dict[str, PathReconstructionMethod] = {
             "euclidean": EuclideanPathReconstructionMethod(),
-            #"classic_min_energy": ClassicMinEnergyPathReconstructionMethod(),
-            #"squared_min_energy": SquaredMinEnergyPathReconstructionMethod(),
+            "classic_min_energy": ClassicMinEnergyPathReconstructionMethod(),
+            "squared_min_energy": SquaredMinEnergyPathReconstructionMethod(),
             "dahu_distance": DahuDistancePathReconstructionMethod(),
         }
 

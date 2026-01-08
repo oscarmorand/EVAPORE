@@ -17,5 +17,4 @@ class LinkPredictionBaselineWithoutLearning:
             if not ((u, v) in real_edges_set or (v, u) in real_edges_set):
                 new_edges.add((u, v))
         new_edges = torch.tensor(list(new_edges)).t()
-        print(new_edges.shape)
         return new_edges, None

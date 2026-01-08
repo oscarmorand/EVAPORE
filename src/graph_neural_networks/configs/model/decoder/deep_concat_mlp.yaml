@@ -1,0 +1,5 @@
+defaults:
+  - concat_mlp
+
+hidden_dim: [256, 128, 64]
+symmetric: false

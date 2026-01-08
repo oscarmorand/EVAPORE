@@ -1,3 +1,4 @@
+from omegaconf import ListConfig
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -23,8 +24,8 @@ class ConcatMLPDecoder(nn.Module):
 
         if isinstance(hidden_dim, int):
             dims.append(hidden_dim)
-        elif isinstance(hidden_dim, list):
-            dims.extend(hidden_dim)
+        elif isinstance(hidden_dim, ListConfig) or isinstance(hidden_dim, list):
+            dims.extend(list(hidden_dim))
         else:
             raise ValueError("hidden_dim must be an int or a list of ints.")
 

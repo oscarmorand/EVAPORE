@@ -55,10 +55,8 @@ class Betti_error_1_2D(Metric):
     ) -> float:
         betti_1_number_pred = self.betti_1_2D(pred)
         betti_1_number_gt = self.betti_1_2D(target)
-        print("betti_1_number_pred:", betti_1_number_pred, ", betti_1_number_gt:", betti_1_number_gt)
 
         betti_error_1 = abs(betti_1_number_pred - betti_1_number_gt) / (betti_1_number_gt + self.min_f)
-        print("betti_error_1:", betti_error_1)
         return betti_error_1
 
     def update(

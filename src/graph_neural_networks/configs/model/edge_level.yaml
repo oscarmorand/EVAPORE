@@ -1,6 +1,6 @@
 defaults:
   - encoder: no_encoder # gcn, gat, transformer_gnn, no_encoder
-  - decoder: concat_mlp # inner_product, concat_mlp, bilinear, mixed_concat_mlp_bilinear, hadamard_mlp
+  - decoder: deep_concat_mlp # inner_product, concat_mlp, bilinear, mixed_concat_mlp_bilinear, hadamard_mlp, deep_concat_mlp
   - edge_query: edge_query_virtual_edges
   - edge_predictor: edge_predictor_thresholded
   - optimizer: adamw

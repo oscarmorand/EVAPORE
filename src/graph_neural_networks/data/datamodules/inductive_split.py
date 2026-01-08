@@ -7,9 +7,9 @@ from torch_geometric.data import Data
 import numpy as np
 import os
 import json
+from enum import Enum
 
 from graph_neural_networks.data.dataset.graph_dataset_builder import GraphDatasetBuilder
-from graph_neural_networks.data.data_targets.data_target import DataTarget
 from graph_neural_networks.utils import RankedLogger
 from graph_neural_networks.data.datamodules.split_datamodule import SplitDataModule
 from graph_neural_networks.data.edge_splits.edge_split import EdgeSplit
@@ -24,9 +24,10 @@ class InductiveSplitDataModule(SplitDataModule):
                  batch_size: int = 32, 
                  num_workers: int = 7, 
                  val_split: float = 0.1, 
-                 test_split: float = 0.1
+                 test_split: float = 0.1,
+                 mode: str = "processed"
     ) -> None:
-        super().__init__(dataset, batch_size, num_workers)
+        super().__init__(dataset, batch_size, num_workers, mode)
 
         self.val_split = val_split
         self.test_split = test_split
@@ -81,16 +82,20 @@ class InductiveSplitDataModule(SplitDataModule):
         else:
             train_indices, val_indices, test_indices = self.load_split_indices()
 
-        for i, data in enumerate(self.dataset):
-            graph = self.edge_split(data)
+        for i in range(len(self.dataset)):
+            data = self.dataset.get_all_from_keys(i, keys=[self.mode])[self.mode]
+            if self.mode == "processed":
+                data = self.edge_split(data)
+            else:
+                data = (i, data)
 
             if i in train_indices:
-                train_dataset.append(graph)
+                train_dataset.append(data)
             elif i in val_indices:
-                val_dataset.append(graph)
+                val_dataset.append(data)
             elif i in test_indices:
-                test_dataset.append(graph)
-                pred_dataset.append(graph)
+                test_dataset.append(data)
+                pred_dataset.append(data)
 
         if stage == TrainerFn.FITTING:
             self.train_dataset = train_dataset

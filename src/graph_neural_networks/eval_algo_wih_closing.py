@@ -16,7 +16,7 @@ from graph.graph_visualization import get_graph_overlay_img, get_virtual_centerl
 from graph_neural_networks.data.dataset.graph_dataset import GraphDataset
 from graph_neural_networks.reconstruction.reconstruction_method import ReconstructionMethod
 from graph_neural_networks.models import LinkPredictionBaselineWithoutLearning
-from graph_neural_networks.infer import compute_reconstructed_masks, get_graph_ids, log_inference_images
+from graph_neural_networks.infer import compute_reconstructed_masks, log_inference_images, get_graph_ids
 from graph_neural_networks.eval import compute_image_based_metrics, log_metrics
 
 from graph_neural_networks.utils import (
@@ -32,7 +32,7 @@ log = RankedLogger(__name__, rank_zero_only=True)
 
 @task_wrapper
 def evaluate(cfg: DictConfig) -> tuple[dict[str, Any], dict[str, Any]]:
-    """Evaluates given checkpoint on a datamodule test set.
+    """Evaluates algorithm with closing on a datamodule test set.
 
     This method is wrapped in optional @task_wrapper decorator, that controls the behavior during failure. Useful for
     multiruns, saving info about the crash, etc.
@@ -53,9 +53,6 @@ def evaluate(cfg: DictConfig) -> tuple[dict[str, Any], dict[str, Any]]:
     log.info("Instantiating loggers...")
     logger: list[Logger] = instantiate_loggers(cfg.get("logger", []))
 
-    log.info(f'Instantiating reconstruction method <{cfg.reconstruction._target_}>')
-    reconstruction_method: ReconstructionMethod = hydra.utils.instantiate(cfg.reconstruction)
-
     log.info(f"Instantiating image metrics...")
     image_metrics: MetricCollection = hydra.utils.instantiate(cfg.get("image_metrics", []))
 
@@ -64,40 +61,27 @@ def evaluate(cfg: DictConfig) -> tuple[dict[str, Any], dict[str, Any]]:
         "datamodule": datamodule,
         "model": model,
         "logger": logger,
-        "reconstruction_method": reconstruction_method,
         "image_metrics": image_metrics,
     }
 
     wandb_logger: WandbLogger = logger[0]
 
     log.info("Starting inference!")
-    res = []
     datamodule.setup(stage="predict")
     dataset: GraphDataset = datamodule.dataset
     dataloader = datamodule.predict_dataloader() 
     graph_ids = get_graph_ids(dataloader)
 
+    reconstructed_imgs = []
+    reconstructed_masks = []
     for batch in tqdm(dataloader, desc="Predicting"):
-        batch_res = model.predict_step(batch)
-        res.append(batch_res)
-    predictions = [r[0] for r in res]
-    edge_scores = [r[1] for r in res]
+        reconstructed_img, reconstructed_mask = model.predict_step(batch)
+        reconstructed_imgs.append(reconstructed_img)
+        reconstructed_masks.append(reconstructed_mask)
 
-    reconstructed_imgs, reconstructed_masks = compute_reconstructed_masks(
-        dataset,
-        graph_ids,
-        predictions,
-        reconstruction_method
-    )
+    log_inference_images(dataset, graph_ids, None, None, reconstructed_imgs, wandb_logger)
 
-    log_inference_images(dataset, graph_ids, predictions, edge_scores, reconstructed_imgs, wandb_logger)
-
-    before_reconstruction_scores, after_reconstruction_scores = compute_image_based_metrics(
-        dataset,
-        graph_ids,
-        image_metrics,
-        reconstructed_masks
-    )
+    before_reconstruction_scores, after_reconstruction_scores = compute_image_based_metrics(dataset, graph_ids, image_metrics, reconstructed_masks)
 
     log_metrics(before_reconstruction_scores, after_reconstruction_scores, image_metrics, wandb_logger)    
 
@@ -106,7 +90,7 @@ def evaluate(cfg: DictConfig) -> tuple[dict[str, Any], dict[str, Any]]:
     return metric_dict, object_dict
 
 
-@hydra.main(version_base=None, config_path="configs", config_name="eval_baseline_without_learning.yaml")
+@hydra.main(version_base=None, config_path="configs", config_name="eval_algo_with_closing.yaml")
 def hydra_main(cfg: DictConfig) -> None:
     """Hydra entry point for evaluation.
 

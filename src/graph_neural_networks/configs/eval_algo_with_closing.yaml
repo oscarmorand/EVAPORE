@@ -1,0 +1,18 @@
+# @package _global_
+
+defaults:
+  - data: inductive_split
+  - model: image_level_reconnection_with_closing
+  - model/metrics/vascular_segmentation@image_metrics
+  - logger: wandb
+  - paths: default
+  - hydra: default
+
+  - override /data/edge_split: no_edge_split
+  - override /data/dataset: dynamic_dataset
+  - override /data/dataset/base_dataset: fives
+
+data:
+  mode: "pred"
+
+task_name: "eval_algo_with_closing"

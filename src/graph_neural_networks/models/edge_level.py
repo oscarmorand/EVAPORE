@@ -90,9 +90,7 @@ class LinkPredictionLitModule(GraphLitModule):
         """
         batch = kwargs.get("batch", args[0])
         y = self.forward(batch)
-        print(batch)
         query_edge_index = self.edge_query(batch)
-        print(query_edge_index.shape)
         edges_scores = self.decoder(y, query_edge_index)
         normalized_edges_scores = torch.sigmoid(edges_scores)
         new_edges, new_edges_scores = self.edge_predictor(normalized_edges_scores, query_edge_index)
