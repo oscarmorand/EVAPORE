@@ -14,23 +14,22 @@ dependencies = [
     "hydra-core>=1.3.2,<2",
     "hydra-joblib-launcher>=1.2.0,<2",
     "hydra-optuna-sweeper>=1.2.0,<2",
-    "lightning>=2.5.0.post0,<2.6",
+    "lightning>=2.6,<2.7",
     "rich>=14,<15",
     "rootutils>=1.0.7,<2",
     "scikit-learn>=1.6.1,<2",
-    # Use our fork of torch-geometric that patches Lightning imports until the following issue gets solved and released:
-    # https://github.com/pyg-team/pytorch_geometric/issues/9811
-    # NOTE: The direct reference is specified here using standard syntax (instead of in `tool.uv.sources`)
-    # so that our fork also gets chosen when installing the package using `pip install .`
-    "torch-geometric @ git+https://github.com/nathanpainchaud/pytorch_geometric.git@b20a4d72c3309f608b8990c89d128c67799a3fff",
+    "torch-geometric>=2.7,<2.8",
     "torchmetrics[visual]>=1.8,<1.9",
+    "scikit-image>=0.26.0,<1.0",
+    "skan>=0.13,<1.0",
+    "pylena>=0.1.5,<1.0"
 ]
 [project.optional-dependencies]
 all = [
     "graph-neural-networks[wandb,ogb]",
 ]
 wandb = [
-    "wandb>=0.22,<0.23",
+    "wandb>=0.23,<0.24",
 ]
 ogb = [
     "ogb>=1.3.6,<2",
@@ -67,10 +66,10 @@ dev = [
 ]
 lint = [
     "docformatter>=1.7.5,<2",
-    "ruff>=0.13,<0.14",
+    "ruff>=0.14,<0.15",
 ]
 test = [
-    "pytest>=8.3.4,<9",
+    "pytest>=9,<10",
     "pytest-cov>=7,<8",
     "sh>=2.2.1,<3",
 ]
@@ -80,11 +79,11 @@ gnn-train = "graph_neural_networks.train:main"
 gnn-eval = "graph_neural_networks.eval:main"
 
 [build-system]
-requires = ["uv_build>=0.8,<0.9"]
+requires = ["uv_build>=0.9,<0.10"]
 build-backend = "uv_build"
 
 [tool.uv]
-required-version = ">=0.8,<0.9"
+required-version = ">=0.9,<0.10"
 # Refer to the note above about installing pytorch using optional dependencies,
 # especially the link to uv's documentation, to understand this configuration
 conflicts = [
@@ -163,23 +162,26 @@ url = "https://data.pyg.org/whl/torch-2.7.0+cu128.html"
 format = "flat"
 explicit = true
 
-[tool.pytest.ini_options]
+[tool.pytest]
 addopts = [
   "--color=yes",
   "--durations=0",
-  "--strict-markers",
   "--doctest-modules",
 ]
 filterwarnings = [
   "ignore::DeprecationWarning",
   "ignore::UserWarning",
 ]
-log_cli = "True"
+log_cli = true
 markers = [
   "slow: slow tests",
 ]
-minversion = "6.0"
-testpaths = "tests/"
+minversion = "9.0"
+strict = true
+testpaths = [
+    "tests/",
+    "src/graph_neural_networks/", # to run doctests
+]
 
 [tool.coverage.run]
 branch = true
