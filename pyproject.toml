@@ -43,18 +43,22 @@ ogb = [
 # they want to list here, i.e. support
 cpu = [
   "torch-scatter>=2.1.2,<3",    # torch-scatter is an optional dependency of `torch-geometric` that optimizes scatter ops used by GNN models
+  "torchvision>=0.22,<0.23",
   "torch>=2.7,<2.8",
 ]
 cu118 = [
   "torch-scatter>=2.1.2,<3",    # torch-scatter is an optional dependency of `torch-geometric` that optimizes scatter ops used by GNN models
+  "torchvision>=0.22,<0.23",
   "torch>=2.7,<2.8",
 ]
 cu126 = [
   "torch-scatter>=2.1.2,<3",    # torch-scatter is an optional dependency of `torch-geometric` that optimizes scatter ops used by GNN models
+  "torchvision>=0.22,<0.23",
   "torch>=2.7,<2.8",
 ]
 cu128 = [
   "torch-scatter>=2.1.2,<3",    # torch-scatter is an optional dependency of `torch-geometric` that optimizes scatter ops used by GNN models
+  "torchvision>=0.22,<0.23",
   "torch>=2.7,<2.8",
 ]
 
@@ -99,6 +103,12 @@ conflicts = [
 # Refer to the note above about installing pytorch using optional dependencies,
 # especially the link to uv's documentation, to understand this configuration
 torch = [
+  { index = "pytorch-cpu", extra = "cpu" },
+  { index = "pytorch-cu118", extra = "cu118" },
+  { index = "pytorch-cu126", extra = "cu126" },
+  { index = "pytorch-cu128", extra = "cu128" },
+]
+torchvision = [
   { index = "pytorch-cpu", extra = "cpu" },
   { index = "pytorch-cu118", extra = "cu118" },
   { index = "pytorch-cu126", extra = "cu126" },
