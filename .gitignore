@@ -51,3 +51,5 @@ src/**/configs/local/*
 
 # Notebooks wandb
 notebooks/*.ipynb
+notebooks/lightning_logs/
+notebooks/*.ckpt
