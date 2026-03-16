@@ -1,0 +1,4 @@
+_target_: path_neural_networks.models.path_classifiers.FCNPathClassifier
+n_hidden_layers: 2
+num_classes: 2
+dropout: 0.0

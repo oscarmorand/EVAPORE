@@ -1,0 +1,5 @@
+hidden_layers: 3
+kernel_size: 3
+padding: 1
+residual_blocks: false
+skip_connection: false

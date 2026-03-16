@@ -1,0 +1,11 @@
+defaults:
+  - features_generator: pretrained_unet # pretrained_unet, pretrained_freezed_unet, no_features_generator
+  - path_sampler: single_point_path_sampler # single_point_path_sampler, square_path_sampler, multi_scale_square_path_sampler
+  - path_encoder: conv_max_pooling_path_encoder # conv_max_pooling_path_encoder, conv_mean_pooling_path_encoder, conv_multi_stats_pooling_path_encoder
+  - path_classifier: fcn_path_classifier # fcn_path_classifier, fcn_path_classifier_with_dropout
+  - criterion: weigthed_bce_with_logits
+  - optimizer: adamw
+  - scheduler: cosine_annealing_lr
+  - metrics: null # no sane default can be provided here, metrics are set in `experiment` config
+
+_target_: path_neural_networks.models.ReducedPipelineLitModule

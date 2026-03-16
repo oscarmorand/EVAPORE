@@ -1,0 +1,32 @@
+_target_: lightning.pytorch.trainer.Trainer
+
+default_root_dir: ${paths.output_dir}
+
+min_epochs: 1 # prevents early stopping
+max_epochs: 100
+
+accelerator: cpu
+devices: 1
+
+# mixed precision for extra speed-up
+precision: 16-mixed
+
+# Gradient clipping
+gradient_clip_val: 1.0
+gradient_clip_algorithm: norm
+
+# perform a validation loop every N training epochs
+check_val_every_n_epoch: 1
+val_check_interval: 0.1
+
+# set True to ensure deterministic results
+# makes training slower but gives more reproducibility than just setting seeds
+deterministic: False
+
+# callbacks
+callbacks:
+  - ${callbacks.model_checkpoint_loss}
+  - ${callbacks.model_checkpoint_pr_auc}
+  - ${callbacks.early_stopping_loss}
+  - ${callbacks.model_summary}
+  - ${callbacks.rich_progress_bar}

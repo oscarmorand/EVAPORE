@@ -1,0 +1,5 @@
+_target_: path_neural_networks.mdoels.features_generator.PretrainedUnetFeaturesGenerator
+ckpt_path: "/home/morand/afs/EVAPORE/notebooks/lightning_logs/version_202/checkpoints/best-checkpoint-epoch=65-val_loss=0.0685.ckpt"
+device: ${auto_device:}
+freeze_weights: false
+features_generator_skip_connections: false

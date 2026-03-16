@@ -1,0 +1,4 @@
+defaults:
+  - conv_pooling_path_encoder
+
+_target_: path_neural_networks.models.path_encoders.ConvMeanPoolingPathEncoder

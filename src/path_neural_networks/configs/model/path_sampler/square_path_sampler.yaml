@@ -1,0 +1,5 @@
+defaults:
+  - aggregation: max_aggregation
+
+_target_: path_neural_networks.models.path_samplers.SquarePathSampler
+square_size: 3

@@ -1,0 +1,6 @@
+_target_: albumentations.Lambda
+p: 0.5
+
+image:
+  _target_: utils.data_augmentation.AddGaussNoise
+  std: [0.005, 0.015]

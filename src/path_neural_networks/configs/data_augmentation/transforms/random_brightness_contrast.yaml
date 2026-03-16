@@ -1,0 +1,4 @@
+_target_: albumentations.RandomBrightnessContrast
+p: 0.5
+brightness_limit: [-0.15, 0.15]
+contrast_limit: [-0.15, 0.15]
