@@ -35,19 +35,21 @@ def get_virtual_centerline(x0: int, y0: int, x1: int, y1: int) -> np.ndarray:
     y = float(y0)
 
     # make a list for coordinates
-    x_coorinates = []
-    y_coorinates = []
+    x_coordinates = []
+    y_coordinates = []
 
     for i in range(steps):
         # append the x,y coordinates in respective list
-        x_coorinates.append(x)
-        y_coorinates.append(y)
+        x_coordinates.append(x)
+        y_coordinates.append(y)
 
         # increment the values
         x = x + xinc
         y = y + yinc
+    x_coordinates.append(x1)
+    y_coordinates.append(y1)
 
-    centerline = np.array([x_coorinates, y_coorinates]).T.astype(np.int32)
+    centerline = np.array([x_coordinates, y_coordinates]).T.astype(np.int32)
     return centerline
 
 

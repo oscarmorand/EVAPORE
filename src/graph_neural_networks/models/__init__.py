@@ -2,7 +2,6 @@ from .abstract import GraphLitModule, MetricTrackingLitModule
 from .graph_level import GraphLevelLitModule
 from .edge_level import LinkPredictionLitModule
 from .edge_level_baseline_without_learning import LinkPredictionBaselineWithoutLearning
-from .image_level_reconnection_with_closing import ImageLevelReconnectionWithClosing
 from .losses.distance_regression import GaussianNormalizedDistanceL1Loss, GaussianNormalizedDistanceBCELoss
 from .decoder.inner_product import InnerProductDecoder
 from .decoder.concat_mlp import ConcatMLPDecoder
@@ -17,7 +16,6 @@ __all__ = [
     "MetricTrackingLitModule", 
     "LinkPredictionLitModule", 
     "LinkPredictionBaselineWithoutLearning",
-    "ImageLevelReconnectionWithClosing",
     "InnerProductDecoder", 
     "ConcatMLPDecoder",
     "BilinearDecoder",
