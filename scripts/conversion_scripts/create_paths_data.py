@@ -12,7 +12,7 @@ from graph_neural_networks.data.utils.pred_state import get_combined_graph
 from graph_neural_networks.data.utils.pred_state import EdgePredState
 import networkx as nx
 import torch
-from graph_neural_networks.reconstruction.path_reconstruction.min_energy_path_reconstruction import SquaredMinEnergyPathReconstructionMethod
+from utils.reconstruction.path_reconstruction.min_energy_path_reconstruction import SquaredMinEnergyPathReconstructionMethod
 from multiprocessing import Pool, cpu_count
 from skimage.measure import label
 

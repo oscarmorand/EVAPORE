@@ -6,6 +6,7 @@ import torchvision.transforms as transforms
 from torch.utils.data.dataset import random_split
 from torch.utils.data import Dataset, Subset
 import albumentations as A
+import json
 
 from image_segmentation.data.image_dataset import ImageDataset
 
@@ -13,8 +14,9 @@ class ImageDatamodule(LightningDataModule):
     def __init__(
             self,
             dataset: ImageDataset,
-            val_split: float = 0.2,
-            test_split: float = 0.1,
+            split_file_path: str = None,
+            train_split_name: str = 'train',
+            val_split_ratio: float = 0.2,
             train_transforms: A.Compose = None,
             val_transforms: A.Compose = None,
             test_transforms: A.Compose = None,
@@ -27,9 +29,16 @@ class ImageDatamodule(LightningDataModule):
             **kwargs,
     ):
         super().__init__(*args, **kwargs)
+
+        self.split_file_path = split_file_path
+        if not os.path.exists(self.split_file_path):
+            raise ValueError(f"Split file not found at {self.split_file_path}. Please provide a valid path to the split file.")
+        with open(self.split_file_path, 'r') as f:
+            self.split_info = json.load(f)
+
         self.full_dataset = dataset
-        self.val_split = val_split
-        self.test_split = test_split
+        self.val_split_ratio = val_split_ratio
+        self.train_split_name = train_split_name
 
         self.train_batch_size = train_batch_size
         self.val_batch_size = val_batch_size
@@ -43,18 +52,26 @@ class ImageDatamodule(LightningDataModule):
         self.shuffle_train = shuffle_train
 
     def setup(self, stage=None):
+        self.train_val_split_idx = self.split_info[self.train_split_name]
+        self.test_split_idx = self.split_info['test']
+
+        self.train_val_split_i = [int(id.split('_')[1]) - 1 for id in self.train_val_split_idx]
+        self.test_split_i = [int(id.split('_')[1]) - 1 for id in self.test_split_idx]
+
         total_len = len(self.full_dataset)
-        val_len = int(total_len * self.val_split)
-        test_len = int(total_len * self.test_split)
-        train_len = total_len - val_len - test_len
+        train_val_len = len(self.train_val_split_idx)
+        val_len = int(train_val_len * self.val_split_ratio)
+        train_len = train_val_len - val_len
+        test_len = len(self.test_split_idx)
         print(f"Dataset split: Train={train_len}, Val={val_len}, Test={test_len}: Total={total_len}")
 
         generator = torch.Generator().manual_seed(self.seed)
-        indices = torch.randperm(total_len, generator=generator)
+        train_val_perm = torch.randperm(train_val_len, generator=generator)
+        train_val_split_i_perm = self.train_val_split_i[train_val_perm]
 
-        train_indices = indices[:train_len]
-        val_indices = indices[train_len:train_len+val_len]
-        test_indices = indices[train_len+val_len:]
+        train_indices = train_val_split_i_perm[:train_len]
+        val_indices = train_val_split_i_perm[train_len:train_len+val_len]
+        test_indices = self.test_split_i
 
         # Create separate dataset objects for each split
         self.train_dataset = Subset(
@@ -78,6 +95,13 @@ class ImageDatamodule(LightningDataModule):
             ),
             test_indices
         )
+
+        self.split_info[f"seed_{self.seed}"] = {
+            "train": [self.train_val_split_idx[i] for i in train_indices],
+            "val": [self.train_val_split_idx[i] for i in val_indices]
+        }
+        with open(self.split_file_path, 'w') as f:
+            json.dump(self.split_info, f, indent=4)
 
     def train_dataloader(self):
         loader = DataLoader(self.train_dataset,

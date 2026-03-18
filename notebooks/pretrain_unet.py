@@ -8,7 +8,7 @@
 #       format_version: '1.3'
 #       jupytext_version: 1.18.1
 #   kernelspec:
-#     display_name: graph-neural-networks
+#     display_name: graph-neural-networks (3.12.11)
 #     language: python
 #     name: python3
 # ---
@@ -23,16 +23,17 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 # %%
-from graph_neural_networks.models.binary_segmentator import BinarySegmentator
-from graph_neural_networks.data.datamodules.image_datamodule import ImageDatamodule
-from graph_neural_networks.data.dataset.image_dataset import ImageDataset
+from image_segmentation.models.binary_segmentator import BinarySegmentator
+from image_segmentation.data.image_datamodule import ImageDatamodule
+from image_segmentation.data.image_dataset import ImageDataset
 
 # %%
 dataset = "FIVES_clean"
 data_dir = f"/home/morand/afs/EVAPORE/data/{dataset}/"
 
 # %% [markdown]
-# # Show dataset without data augmentation
+# # Data visualization
+# ### Show dataset without data augmentation
 
 # %%
 dataset = ImageDataset(data_dir)
@@ -80,12 +81,12 @@ for i, batch in enumerate(dataloader):
     plt.axis("off")
     plt.show()
 
-    if i > 5:
+    if i >= 3:
         break
 
 
 # %% [markdown]
-# # Show dataset with data augmentation (but without normalization)
+# ### Show dataset with data augmentation (but without normalization)
 
 # %%
 class AddGaussNoise:
@@ -178,11 +179,11 @@ for i, batch in enumerate(dataloader):
     plt.axis("off")
     plt.show()
 
-    if i > 5:
+    if i >= 3:
         break
 
 # %% [markdown]
-# # Show dataset with data augmentation and patches (without normalization)
+# ### Show dataset with data augmentation and patches (without normalization)
 
 # %%
 dataset = ImageDataset(data_dir)
@@ -263,9 +264,8 @@ for i, batch in enumerate(dataloader):
         plt.axis("off")
         plt.show()
 
-        if b >= 5:
+        if b >= 3:
             break
-
     break
 
 # %% [markdown]
@@ -383,7 +383,6 @@ print(f"Std: {std}")
 train_transforms = A.Compose([
     A.HorizontalFlip(p=0.5),
     A.VerticalFlip(p=0.1),
-
     A.Affine(
         rotate=(-5, 5),
         scale=1.0,  # keep size
@@ -396,20 +395,17 @@ train_transforms = A.Compose([
         fill_mask=0,  # background fill for masks
         p=0.5
     ),
-
     A.CropNonEmptyMaskIfExists(
         height=patch_size,
         width=patch_size,
         p=1.0,
     ),
-
     A.RandomBrightnessContrast(
         brightness_limit=(-0.15, 0.15),
         contrast_limit=(-0.15, 0.15),
         p=0.5
     ),
     A.Lambda(image=AddGaussNoise(std=(0.005, 0.015)), p=0.5),
-
     A.Normalize(mean=mean, std=std, max_pixel_value=1.0),
     ToTensorV2(),
 ], additional_targets={"fg_mask": "mask"})

@@ -14,12 +14,10 @@ class ImageDataset(Dataset):
 
     def __init__(self,
                  data_dir: str,
-                 transforms=None,
-                 compute_stats_only_on_foreground: bool = True
+                 transforms=None
     ):
         super().__init__()
         self.transforms = transforms
-        self.compute_stats_only_on_foreground = compute_stats_only_on_foreground
 
         self.data_dir = data_dir
         self.img_path = os.path.join(self.data_dir, self.IMAGE_PATH)
@@ -29,8 +27,6 @@ class ImageDataset(Dataset):
         self.img_list = self.get_filenames(self.img_path)
         self.gt_list = self.get_filenames(self.gt_path)
         self.foreground_mask_list = self.get_filenames(self.foreground_mask_path)
-
-        self.stats = self.get_dataset_stats()
 
     def __len__(self):
         return len(self.img_list)
@@ -89,7 +85,6 @@ class ImageDataset(Dataset):
 
         return img, gt
 
-
     def get_filenames(self, path):
         """
         Returns a list of absolute paths to images inside given `path`
@@ -99,22 +94,34 @@ class ImageDataset(Dataset):
             files_list.append(os.path.join(path, filename))
         return files_list
     
-    def get_dataset_stats(self):
+    def get_dataset_stats(self, split_name: str = None, split_indices: list[int] = None):
         filename = 'image_stats.json'
-        if self.compute_stats_only_on_foreground and len(self.foreground_mask_list) > 0:
-            filename = 'image_stats_foreground_only.json'
         stats_filepath = os.path.join(self.data_dir, filename)
         if os.path.exists(stats_filepath):
             with open(stats_filepath, 'r') as f:
-                stats = json.load(f)
+                all_stats = json.load(f)
         else:
-            print("Computing dataset stats...")
-            stats = self.compute_dataset_stats()
+            all_stats = {}
+
+        if split_name is None:
+            split_name = 'full_dataset'
+        if split_indices is None:
+            split_indices = list(range(len(self.img_list)))
+                
+        if split_name in all_stats:
+            print(f"Loading dataset stats for split '{split_name}' from {stats_filepath}...")
+            stats = all_stats[split_name]
+        else:
+            print(f"Computing dataset stats for split '{split_name}'...")
+            stats = self.compute_dataset_stats(split_indices)
+            all_stats[split_name] = stats
+            print(f"Saving dataset stats for split '{split_name}' to {stats_filepath}...")
             with open(stats_filepath, 'w') as f:
-                json.dump(stats, f, indent=4)
+                json.dump(all_stats, f, indent=4)
+
         return stats
     
-    def compute_dataset_stats(self):
+    def compute_dataset_stats(self, split_indices: list[int] = None):
         sum_ = np.zeros(3, dtype=np.float64)
         sum_sq = np.zeros(3, dtype=np.float64)
         n_pixels = 0
@@ -122,7 +129,7 @@ class ImageDataset(Dataset):
         for i, img_file in enumerate(tqdm(self.img_list, desc="Computing dataset stats on images")):
             img = np.array(Image.open(img_file), dtype=np.float32) / 255.0
             fg_mask = None
-            if self.compute_stats_only_on_foreground and len(self.foreground_mask_list) > 0:
+            if len(self.foreground_mask_list) > 0:
                 fg_mask = self._get_foreground_mask(i, img.shape[:2])
             if fg_mask is not None:
                 pixels = img[fg_mask > 0]
