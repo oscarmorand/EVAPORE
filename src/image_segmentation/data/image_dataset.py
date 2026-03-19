@@ -27,12 +27,13 @@ class ImageDataset(Dataset):
         self.img_list = self.get_filenames(self.img_path)
         self.gt_list = self.get_filenames(self.gt_path)
         self.foreground_mask_list = self.get_filenames(self.foreground_mask_path)
+        self.foreground_available = len(self.foreground_mask_list) > 0
 
     def __len__(self):
         return len(self.img_list)
     
     def _get_foreground_mask(self, idx, gt_shape):
-        if len(self.foreground_mask_list) == 0:
+        if not self.foreground_available:
             return None
 
         mask_path = (
@@ -68,7 +69,7 @@ class ImageDataset(Dataset):
         gt = (gt > 0).astype(np.float32)
 
         fg_mask = None
-        if len(self.foreground_mask_list) > 0:
+        if self.foreground_available:
             fg_mask = self._get_foreground_mask(idx, gt.shape).astype(np.float32)
 
             img = img * fg_mask[..., None]
@@ -105,15 +106,23 @@ class ImageDataset(Dataset):
 
         if split_name is None:
             split_name = 'full_dataset'
-        if split_indices is None:
-            split_indices = list(range(len(self.img_list)))
                 
         if split_name in all_stats:
             print(f"Loading dataset stats for split '{split_name}' from {stats_filepath}...")
             stats = all_stats[split_name]
         else:
-            print(f"Computing dataset stats for split '{split_name}'...")
-            stats = self.compute_dataset_stats(split_indices)
+            if split_indices is None:
+                split_indices = list(range(len(self.img_list)))
+                
+            print(f"Computing dataset stats for split '{split_name}' using all image pixels...")
+            full_img_stats = self.compute_dataset_stats(split_indices, use_foreground_mask=False)
+            stats = {'full_image': full_img_stats}
+
+            if self.foreground_available:
+                print(f"Computing dataset stats for split '{split_name}' using only foreground pixels...")
+                foreground_stats = self.compute_dataset_stats(split_indices, use_foreground_mask=True)
+                stats['foreground'] = foreground_stats
+
             all_stats[split_name] = stats
             print(f"Saving dataset stats for split '{split_name}' to {stats_filepath}...")
             with open(stats_filepath, 'w') as f:
@@ -121,17 +130,18 @@ class ImageDataset(Dataset):
 
         return stats
     
-    def compute_dataset_stats(self, split_indices: list[int] = None):
+    def compute_dataset_stats(self, split_indices: list[int] = None, use_foreground_mask: bool = True):
         sum_ = np.zeros(3, dtype=np.float64)
         sum_sq = np.zeros(3, dtype=np.float64)
         n_pixels = 0
 
-        for i, img_file in enumerate(tqdm(self.img_list, desc="Computing dataset stats on images")):
-            img = np.array(Image.open(img_file), dtype=np.float32) / 255.0
+        for i in tqdm(split_indices, desc="Computing dataset stats on images"):
+            img_path = self.img_list[i]
+            img = np.array(Image.open(img_path), dtype=np.float32) / 255.0
+
             fg_mask = None
-            if len(self.foreground_mask_list) > 0:
+            if self.foreground_available and use_foreground_mask:
                 fg_mask = self._get_foreground_mask(i, img.shape[:2])
-            if fg_mask is not None:
                 pixels = img[fg_mask > 0]
             else:
                 pixels = img.reshape(-1, 3)

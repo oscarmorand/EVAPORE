@@ -55,23 +55,23 @@ class ImageDatamodule(LightningDataModule):
         self.train_val_split_idx = self.split_info[self.train_split_name]
         self.test_split_idx = self.split_info['test']
 
-        self.train_val_split_i = [int(id.split('_')[1]) - 1 for id in self.train_val_split_idx]
-        self.test_split_i = [int(id.split('_')[1]) - 1 for id in self.test_split_idx]
+        train_val_split_i = torch.tensor([int(id.split('_')[1]) - 1 for id in self.train_val_split_idx])
+        test_split_i = torch.tensor([int(id.split('_')[1]) - 1 for id in self.test_split_idx])
 
-        total_len = len(self.full_dataset)
         train_val_len = len(self.train_val_split_idx)
         val_len = int(train_val_len * self.val_split_ratio)
         train_len = train_val_len - val_len
         test_len = len(self.test_split_idx)
-        print(f"Dataset split: Train={train_len}, Val={val_len}, Test={test_len}: Total={total_len}")
+        print(f"Dataset split: Train={train_len}, Val={val_len}, Test={test_len}")
 
         generator = torch.Generator().manual_seed(self.seed)
         train_val_perm = torch.randperm(train_val_len, generator=generator)
-        train_val_split_i_perm = self.train_val_split_i[train_val_perm]
+        train_perm = train_val_perm[:train_len]
+        val_perm = train_val_perm[train_len:train_len+val_len]
 
-        train_indices = train_val_split_i_perm[:train_len]
-        val_indices = train_val_split_i_perm[train_len:train_len+val_len]
-        test_indices = self.test_split_i
+        self.train_indices = train_val_split_i[train_perm]
+        self.val_indices = train_val_split_i[val_perm]
+        self.test_indices = test_split_i
 
         # Create separate dataset objects for each split
         self.train_dataset = Subset(
@@ -79,26 +79,26 @@ class ImageDatamodule(LightningDataModule):
                 data_dir=self.full_dataset.data_dir,
                 transforms=self.train_transforms
             ),
-            train_indices
+            self.train_indices
         )
         self.val_dataset = Subset(
             ImageDataset(
                 data_dir=self.full_dataset.data_dir,
                 transforms=self.val_transforms
             ),
-            val_indices
+            self.val_indices
         )
         self.test_dataset = Subset(
             ImageDataset(
                 data_dir=self.full_dataset.data_dir,
                 transforms=self.test_transforms
             ),
-            test_indices
+            self.test_indices
         )
 
         self.split_info[f"seed_{self.seed}"] = {
-            "train": [self.train_val_split_idx[i] for i in train_indices],
-            "val": [self.train_val_split_idx[i] for i in val_indices]
+            "train": [self.train_val_split_idx[i] for i in train_perm],
+            "val": [self.train_val_split_idx[i] for i in val_perm]
         }
         with open(self.split_file_path, 'w') as f:
             json.dump(self.split_info, f, indent=4)
