@@ -74,27 +74,7 @@ class ImageDatamodule(LightningDataModule):
         self.test_indices = test_split_i
 
         # Create separate dataset objects for each split
-        self.train_dataset = Subset(
-            ImageDataset(
-                data_dir=self.full_dataset.data_dir,
-                transforms=self.train_transforms
-            ),
-            self.train_indices
-        )
-        self.val_dataset = Subset(
-            ImageDataset(
-                data_dir=self.full_dataset.data_dir,
-                transforms=self.val_transforms
-            ),
-            self.val_indices
-        )
-        self.test_dataset = Subset(
-            ImageDataset(
-                data_dir=self.full_dataset.data_dir,
-                transforms=self.test_transforms
-            ),
-            self.test_indices
-        )
+        self.create_subsets()
 
         self.split_info[f"seed_{self.seed}"] = {
             "train": [self.train_val_split_idx[i] for i in train_perm],
@@ -102,6 +82,28 @@ class ImageDatamodule(LightningDataModule):
         }
         with open(self.split_file_path, 'w') as f:
             json.dump(self.split_info, f, indent=4)
+
+    def create_subsets(self):
+        self.train_dataset = Subset(
+            ImageDataset(
+                data_dir=self.full_dataset.data_dir,
+                transforms=self.train_transforms
+            ),
+            self.train_indices)
+        
+        self.val_dataset = Subset(
+            ImageDataset(
+                data_dir=self.full_dataset.data_dir,
+                transforms=self.val_transforms
+            ),
+            self.val_indices)
+
+        self.test_dataset = Subset(
+            ImageDataset(
+                data_dir=self.full_dataset.data_dir,
+                transforms=self.test_transforms
+            ),
+            self.test_indices)
 
     def train_dataloader(self):
         loader = DataLoader(self.train_dataset,
@@ -123,3 +125,9 @@ class ImageDatamodule(LightningDataModule):
                             shuffle=False,
                             num_workers=self.num_workers)
         return loader
+
+    def predict_dataloader(self):
+        return DataLoader(self.test_dataset,
+                          batch_size=self.val_batch_size,
+                          shuffle=False,
+                          num_workers=self.num_workers)

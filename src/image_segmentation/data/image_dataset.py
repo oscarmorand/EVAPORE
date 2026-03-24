@@ -20,13 +20,14 @@ class ImageDataset(Dataset):
         self.transforms = transforms
 
         self.data_dir = data_dir
+        self.dataset_name = os.path.basename(data_dir).split("_")[0]
         self.img_path = os.path.join(self.data_dir, self.IMAGE_PATH)
         self.gt_path = os.path.join(self.data_dir, self.GT_PATH)
         self.foreground_mask_path = os.path.join(self.data_dir, self.FOREGROUND_MASK_PATH)
 
-        self.img_list = self.get_filenames(self.img_path)
-        self.gt_list = self.get_filenames(self.gt_path)
-        self.foreground_mask_list = self.get_filenames(self.foreground_mask_path)
+        self.img_list = self.get_filenames(self.img_path, extension="png")
+        self.gt_list = self.get_filenames(self.gt_path, extension="png")
+        self.foreground_mask_list = self.get_filenames(self.foreground_mask_path, extension="pt")
         self.foreground_available = len(self.foreground_mask_list) > 0
 
     def __len__(self):
@@ -86,12 +87,12 @@ class ImageDataset(Dataset):
 
         return img, gt
 
-    def get_filenames(self, path):
-        """
-        Returns a list of absolute paths to images inside given `path`
-        """
+    def get_filenames(self, path: str, extension: str):
         files_list = []
-        for filename in sorted(os.listdir(path)):
+        filenames = os.listdir(path)
+        filenames = [filename for filename in filenames if (filename.split(".")[0].split("_")[0] == self.dataset_name and filename.split(".")[1] == extension)]
+        filenames.sort()
+        for filename in filenames:
             files_list.append(os.path.join(path, filename))
         return files_list
     

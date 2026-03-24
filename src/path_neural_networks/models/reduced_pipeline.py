@@ -8,6 +8,11 @@ from torchmetrics import MeanMetric, Metric, MetricCollection, MetricTracker
 
 from path_neural_networks.models.metrics.binary_prauc import BinaryPRAUC
 from path_neural_networks.utils.symmetry_enforcement import SymmetryEnforcementMode
+from path_neural_networks.models.features_generators import FeaturesGenerator
+from path_neural_networks.models.path_samplers import PathSampler
+from path_neural_networks.models.path_encoders import PathEncoder
+from path_neural_networks.models.path_classifiers import PathClassifier
+from path_neural_networks.models.losses import PathClassificationLoss
 
 METRIC_REGISTRY = {
     "accuracy": BinaryAccuracy,
@@ -27,11 +32,11 @@ METRIC_THRESHOLDS_REGISTRY = {
 class ReducedPipelineLitModule(pl.LightningModule):
     def __init__(
         self,
-        features_generator_cfg: DictConfig,
-        path_sampler_cfg: DictConfig,
-        path_encoder_cfg: DictConfig,
-        path_classifier_cfg: DictConfig,
-        loss_fn: nn.Module,
+        features_generator: FeaturesGenerator,
+        path_sampler: PathSampler,
+        path_encoder: PathEncoder,
+        path_classifier: PathClassifier,
+        loss_fn: PathClassificationLoss,
         metrics: MetricCollection,
         lr: float = 1e-3,
         symmetry_enforcement_mode: SymmetryEnforcementMode = SymmetryEnforcementMode.NONE,
@@ -40,11 +45,10 @@ class ReducedPipelineLitModule(pl.LightningModule):
         super().__init__()
         self.save_hyperparameters(ignore=["features_generator", "path_sampler", "path_encoder", "path_classifier", "edge_classification_loss_fn"])
 
-        self.features_generator = instantiate(features_generator_cfg)
-        self.path_sampler = instantiate(path_sampler_cfg, in_channels=self.features_generator.out_channels)
-        self.path_encoder = instantiate(path_encoder_cfg, in_channels=self.path_sampler.out_channels)
-        self.path_classifier = instantiate(path_classifier_cfg, in_channels=self.path_encoder.out_channels)
-
+        self.features_generator = features_generator
+        self.path_sampler = path_sampler
+        self.path_encoder = path_encoder
+        self.path_classifier = path_classifier
         self.loss_fn = loss_fn
 
         # Metrics
@@ -54,7 +58,6 @@ class ReducedPipelineLitModule(pl.LightningModule):
         if inference_threshold is None:
             inference_threshold = 0.5
         self.set_inference_threshold(inference_threshold)
-        
 
     def set_inference_threshold(self, inference_threshold: float):
         self.test_metrics = nn.ModuleDict(
@@ -161,3 +164,33 @@ class ReducedPipelineLitModule(pl.LightningModule):
             "optimizer": optimizer,
             "lr_scheduler": scheduler,
         }
+
+class ReducedPipelineLitModuleHydra(ReducedPipelineLitModule):
+    def __init__(
+        self,
+        features_generator_cfg: DictConfig,
+        path_sampler_cfg: DictConfig,
+        path_encoder_cfg: DictConfig,
+        path_classifier_cfg: DictConfig,
+        loss_fn: nn.Module,
+        metrics: MetricCollection,
+        lr: float = 1e-3,
+        symmetry_enforcement_mode: SymmetryEnforcementMode = SymmetryEnforcementMode.NONE,
+        inference_threshold: float = None
+    ):
+        features_generator = instantiate(features_generator_cfg)
+        path_sampler = instantiate(path_sampler_cfg, in_channels=features_generator.out_channels)
+        path_encoder = instantiate(path_encoder_cfg, in_channels=path_sampler.out_channels)
+        path_classifier = instantiate(path_classifier_cfg, in_channels=path_encoder.out_channels)
+
+        super().__init__(
+            features_generator=features_generator,
+            path_sampler=path_sampler,
+            path_encoder=path_encoder,
+            path_classifier=path_classifier,
+            loss_fn=loss_fn,
+            metrics=metrics,
+            lr=lr,
+            symmetry_enforcement_mode=symmetry_enforcement_mode,
+            inference_threshold=inference_threshold
+        )
