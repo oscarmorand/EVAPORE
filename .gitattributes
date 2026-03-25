@@ -1,1 +1,2 @@
 checkpoints/unet_pretrained/best-checkpoint-epoch=65-val_loss=0.0685.ckpt filter=lfs diff=lfs merge=lfs -text
+checkpoints/main_model_pretrained/best-pr-auc-checkpoint-epoch=03-val_pr_auc=0.9134.ckpt filter=lfs diff=lfs merge=lfs -text
