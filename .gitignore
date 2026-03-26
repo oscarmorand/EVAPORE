@@ -55,3 +55,4 @@ notebooks/lightning_logs/
 notebooks/*.ckpt
 
 checkpoints/unet_pretraining/
+checkpoints/main_model_training/
