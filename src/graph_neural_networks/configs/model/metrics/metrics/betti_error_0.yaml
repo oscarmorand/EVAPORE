@@ -1,2 +1,0 @@
-betti_error_0:
-  _target_: graph_neural_networks.models.metrics.Betti_error_0_2D

@@ -1,3 +1,0 @@
-input_dim: ${model.encoder.out_channels}
-normalize_embeddings: true
-dropout: 0.2

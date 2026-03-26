@@ -1,2 +1,0 @@
-_target_: graph_neural_networks.models.edge_query.EdgeQueryExtremitiesDiffCCMaxDistance
-max_dist: 200.0

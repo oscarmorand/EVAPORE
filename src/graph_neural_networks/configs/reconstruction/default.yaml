@@ -1,5 +1,0 @@
-defaults:
-  - path_reconstruction: squared_min_energy_path_reconstruction # euclidean_path_reconstruction, classic_min_energy_path_reconstruction, squared_min_energy_path_reconstruction, dahu_distance_path_reconstruction
-  - radius_reconstruction: linear_interpolation_radius_reconstruction # linear_interpolation_radius_reconstruction
-
-_target_: graph_neural_networks.reconstruction.ReconstructionMethod

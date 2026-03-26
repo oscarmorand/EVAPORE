@@ -1,3 +1,0 @@
-binary_recall:
-  _target_: torchmetrics.classification.BinaryRecall
-  threshold: ${model.edge_predictor.threshold}

@@ -6,7 +6,7 @@ from torchmetrics.segmentation import DiceScore, MeanIoU
 from torchmetrics.classification import BinaryAccuracy
 
 from image_segmentation.models.unet import UNet
-from graph_neural_networks.models.losses.dice_loss import DiceLoss
+from image_segmentation.models.dice_loss import DiceLoss
 
 class BinarySegmentator(pl.LightningModule):
     def __init__(

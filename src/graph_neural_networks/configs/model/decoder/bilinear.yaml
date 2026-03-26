@@ -1,5 +1,0 @@
-defaults:
-  - default_parameterized_decoder
-
-_target_: graph_neural_networks.models.BilinearDecoder
-symmetric: true

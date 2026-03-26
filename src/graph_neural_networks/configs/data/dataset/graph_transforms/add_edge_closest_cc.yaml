@@ -1,8 +1,0 @@
-# @package _global_
-
-data:
-  dataset:
-    graph_transforms:
-      add_edge_closest_cc_transform:
-        _target_: graph_neural_networks.data.dataset.dynamic.graph_transforms.AddEdgeClosestCCTransform
-        only_one_edge_per_cc: true

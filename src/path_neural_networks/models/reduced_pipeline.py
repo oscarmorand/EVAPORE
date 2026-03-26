@@ -3,31 +3,15 @@ import torch.nn as nn
 import torch
 from hydra.utils import instantiate
 from omegaconf import DictConfig
-from torchmetrics.classification import BinaryAccuracy, BinaryAUROC, BinaryRecall, BinaryPrecision
-from torchmetrics import MeanMetric, Metric, MetricCollection, MetricTracker
+from torchmetrics import MetricCollection
 
-from path_neural_networks.models.metrics.binary_prauc import BinaryPRAUC
 from path_neural_networks.utils.symmetry_enforcement import SymmetryEnforcementMode
 from path_neural_networks.models.features_generators import FeaturesGenerator
 from path_neural_networks.models.path_samplers import PathSampler
 from path_neural_networks.models.path_encoders import PathEncoder
 from path_neural_networks.models.path_classifiers import PathClassifier
 from path_neural_networks.models.losses import PathClassificationLoss
-
-METRIC_REGISTRY = {
-    "accuracy": BinaryAccuracy,
-    "auroc": BinaryAUROC,
-    "recall": BinaryRecall,
-    "precision": BinaryPrecision,
-    "pr_auc": BinaryPRAUC
-}
-METRIC_THRESHOLDS_REGISTRY = {
-    "accuracy": True,
-    "auroc": False,
-    "recall": True,
-    "precision": True,
-    "pr_auc": False
-}
+from path_neural_networks.utils.metric_registry import METRIC_REGISTRY, METRIC_THRESHOLDS_REGISTRY
 
 class ReducedPipelineLitModule(pl.LightningModule):
     def __init__(
@@ -36,7 +20,7 @@ class ReducedPipelineLitModule(pl.LightningModule):
         path_sampler: PathSampler,
         path_encoder: PathEncoder,
         path_classifier: PathClassifier,
-        loss_fn: PathClassificationLoss,
+        edge_classification_loss_fn: PathClassificationLoss,
         metrics: MetricCollection,
         lr: float = 1e-3,
         symmetry_enforcement_mode: SymmetryEnforcementMode = SymmetryEnforcementMode.NONE,
@@ -49,7 +33,7 @@ class ReducedPipelineLitModule(pl.LightningModule):
         self.path_sampler = path_sampler
         self.path_encoder = path_encoder
         self.path_classifier = path_classifier
-        self.loss_fn = loss_fn
+        self.edge_classification_loss_fn = edge_classification_loss_fn
 
         # Metrics
         self.base_metrics = metrics
@@ -100,7 +84,7 @@ class ReducedPipelineLitModule(pl.LightningModule):
                      step: str,
                      metrics: nn.ModuleDict
     ) -> torch.Tensor:
-        img, (paths, edges_classes), _, _ = batch
+        img, (paths, edges_classes), _ = batch
         paths_logits, _ = self.forward(img, paths)
         paths_probs = torch.sigmoid(paths_logits)
         edges_classes = edges_classes.squeeze().type(torch.float)
@@ -118,7 +102,7 @@ class ReducedPipelineLitModule(pl.LightningModule):
     def _augment_batch_with_flipped_paths(self,
                                           batch: tuple
     ) -> tuple:
-        img, (paths, edges_classes), _, _ = batch
+        img, (paths, edges_classes), _ = batch
         flipped_paths = []
         for path in paths:
             flipped_path = torch.flip(path, dims=[0])
@@ -172,7 +156,7 @@ class ReducedPipelineLitModuleHydra(ReducedPipelineLitModule):
         path_sampler_cfg: DictConfig,
         path_encoder_cfg: DictConfig,
         path_classifier_cfg: DictConfig,
-        loss_fn: nn.Module,
+        edge_classification_loss_fn: nn.Module,
         metrics: MetricCollection,
         lr: float = 1e-3,
         symmetry_enforcement_mode: SymmetryEnforcementMode = SymmetryEnforcementMode.NONE,
@@ -188,7 +172,7 @@ class ReducedPipelineLitModuleHydra(ReducedPipelineLitModule):
             path_sampler=path_sampler,
             path_encoder=path_encoder,
             path_classifier=path_classifier,
-            loss_fn=loss_fn,
+            edge_classification_loss_fn=edge_classification_loss_fn,
             metrics=metrics,
             lr=lr,
             symmetry_enforcement_mode=symmetry_enforcement_mode,

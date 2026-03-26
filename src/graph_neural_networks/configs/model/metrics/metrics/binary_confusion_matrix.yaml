@@ -1,3 +1,0 @@
-binary_confusion_matrix:
-  _target_: torchmetrics.classification.BinaryConfusionMatrix
-  threshold: ${model.edge_predictor.threshold}

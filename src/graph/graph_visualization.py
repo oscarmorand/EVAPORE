@@ -12,7 +12,7 @@ import logging
 from graph.graph_labeling import generate_graph_edge_radius_decay, generate_graph_topological_classification, generate_graph_depth
 from graph.graph_utils import find_max_radius_node, TopologicalClass
 from graph.graph_stats import graph_attribute_histogram, graph_depth_histogram, graph_hierarchy_histogram, graph_nodes_degree_histogram, graph_radius_histogram, get_histogram_difference
-from graph_neural_networks.data.utils.pred_state import EdgePredState
+from graph.graph_pred_state import EdgePredState
 
 
 logger = logging.getLogger(__name__)

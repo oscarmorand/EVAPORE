@@ -1,6 +1,0 @@
-defaults:
-  - data_target: binary_link_target # binary_link_target, geodesic_distance_target
-
-_target_: graph_neural_networks.data.CustomEdgeSplit
-geodesic_euclidean_ratio_sampling_ratio: 1.0
-negative_neighbor_sampling: true

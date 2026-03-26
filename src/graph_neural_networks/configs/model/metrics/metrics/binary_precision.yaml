@@ -1,3 +1,0 @@
-binary_precision:
-  _target_: torchmetrics.classification.BinaryPrecision
-  threshold: ${model.edge_predictor.threshold}

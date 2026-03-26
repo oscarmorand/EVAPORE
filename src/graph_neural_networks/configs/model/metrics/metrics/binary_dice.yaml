@@ -1,2 +1,0 @@
-dice_score:
-  _target_: graph_neural_networks.models.metrics.BinaryDice

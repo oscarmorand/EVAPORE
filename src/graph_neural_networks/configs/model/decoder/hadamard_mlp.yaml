@@ -1,5 +1,0 @@
-defaults:
-  - default_parameterized_decoder
-
-_target_: graph_neural_networks.models.HadamardMLPDecoder
-hidden_dim: 128

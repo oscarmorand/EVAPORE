@@ -1,7 +1,0 @@
-# @package _global_
-
-data:
-  dataset:
-    extracted:
-      backbone: qtseg
-      n_features: 64

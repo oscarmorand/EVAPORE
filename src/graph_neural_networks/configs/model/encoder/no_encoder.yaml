@@ -1,2 +1,0 @@
-_target_: graph_neural_networks.models.NoEncoder
-out_channels: ${hparams.data.num_node_features}
