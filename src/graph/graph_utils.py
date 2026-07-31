@@ -164,3 +164,71 @@ def get_terminal_edges(graph: nx.MultiGraph) -> set:
         logging.info("No terminal edges found in the graph.")
 
     return terminal_edges
+
+import numpy as np
+from itertools import product
+
+def sparse_binary_dilation(mask: np.ndarray) -> np.ndarray:
+    """
+    Sparse binary dilation for 2D or 3D (or arbitrary N-D) boolean arrays.
+
+    Uses a full connectivity neighborhood:
+    - 2D: 8-connected
+    - 3D: 26-connected
+
+    Args:
+        mask: Boolean numpy array.
+
+    Returns:
+        Dilated boolean array.
+    """
+    coords = np.argwhere(mask)
+
+    result = mask.copy()
+
+    ndim = mask.ndim
+
+    # Generate all neighbor offsets except the zero offset
+    offsets = np.array([
+        offset
+        for offset in product((-1, 0, 1), repeat=ndim)
+        if any(offset)
+    ])
+
+    shape = np.array(mask.shape)
+
+    for offset in offsets:
+        shifted = coords + offset
+
+        valid = np.all(
+            (shifted >= 0) & (shifted < shape),
+            axis=1
+        )
+
+        result[tuple(shifted[valid].T)] = True
+
+    return result
+
+def bounding_box(mask):
+    """
+    Returns slices corresponding to the smallest bounding box
+    containing all True voxels.
+
+    Parameters
+    ----------
+    mask : ndarray of bool, shape (Z, Y, X)
+
+    Returns
+    -------
+    tuple of slices
+    """
+    coords = np.argwhere(mask)
+
+    if coords.size == 0:
+        return None
+
+    mins = coords.min(axis=0)
+    maxs = coords.max(axis=0) + 1
+
+    bbox = tuple(slice(mi, ma) for mi, ma in zip(mins, maxs))
+    return bbox
