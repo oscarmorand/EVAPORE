@@ -2,6 +2,7 @@ from abc import ABC
 import torch
 import numpy as np
 from networkx import Graph
+from typing import Tuple, List
 
 class PathReconstructionMethod(ABC):
     def __init__(self, height_related: bool) -> None:
@@ -9,17 +10,17 @@ class PathReconstructionMethod(ABC):
         self.height_related = height_related
 
     def reconstruct_one(self,
-                        map: torch.Tensor,
-                        pos_start: tuple[int, int],
-                        pos_goal: tuple[int, int]
-    ) -> list[np.array]:
+                         map: torch.Tensor,
+                         pos_start: Tuple[int, ...],
+                         pos_goal: Tuple[int, ...]
+                         ) -> np.ndarray:
         raise NotImplementedError
 
-    def reconstruct(self, 
-                    map: torch.Tensor,
-                    graph: Graph,
-                    new_edges: torch.Tensor
-    ) -> list[list[np.array]]:
+    def reconstruct(self,
+                     map: torch.Tensor,
+                     graph: Graph,
+                     new_edges: torch.Tensor
+                     ) -> List[np.ndarray]:
         paths = []
 
         if self.height_related:
@@ -32,9 +33,9 @@ class PathReconstructionMethod(ABC):
             u, v = edge
             start = graph.nodes[u]['pos']
             goal = graph.nodes[v]['pos']
-            start = (int(round(start[0])), int(round(start[1])))
-            goal = (int(round(goal[0])), int(round(goal[1])))
-            
+            start = tuple(int(round(c)) for c in start)
+            goal = tuple(int(round(c)) for c in goal)
+
             path = self.reconstruct_one(map, start, goal)
             paths.append(path)
 

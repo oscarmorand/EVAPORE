@@ -13,8 +13,10 @@ class BinarySegmentator(pl.LightningModule):
         self,
         lr: float = 1e-3,
         input_channels: int = 3,
+        ndim: int = 2,
         num_layers: int = 5,
         features_start: int = 64,
+        channels: list[int] = None,
         bilinear: bool = True,
         norm_op: str = 'batch',
         warmup_epochs: int = 5,
@@ -24,11 +26,14 @@ class BinarySegmentator(pl.LightningModule):
         super().__init__()
         self.save_hyperparameters()
 
+        if channels is None:
+            channels = [features_start * (2**i) for i in range(num_layers)]
+
         self.net = UNet(
             input_channels=input_channels,
             num_classes=1,
-            num_layers=num_layers,
-            features_start=features_start,
+            spatial_dims=ndim,
+            channels=channels,
             bilinear=bilinear,
             norm_op=norm_op,
             dropout=dropout,
@@ -39,15 +44,15 @@ class BinarySegmentator(pl.LightningModule):
         self.dice_loss = DiceLoss()
 
         self.train_metrics = nn.ModuleDict({
-            "dice": DiceScore(num_classes=2),
+            "dice": DiceScore(num_classes=2, input_format="index", include_background=False),
             "accuracy": BinaryAccuracy(),
         })
         self.val_metrics = nn.ModuleDict({
-            "dice": DiceScore(num_classes=2),
+            "dice": DiceScore(num_classes=2, input_format="index", include_background=False),
             "accuracy": BinaryAccuracy(),
         })
         self.test_metrics = nn.ModuleDict({
-            "dice": DiceScore(num_classes=2),
+            "dice": DiceScore(num_classes=2, input_format="index", include_background=False),
             "accuracy": BinaryAccuracy(),
         })
 
@@ -70,11 +75,18 @@ class BinarySegmentator(pl.LightningModule):
 
         # Compute metrics (grad NOT tracked)
         with torch.no_grad():
+            preds = (probs > 0.5).long().squeeze(1) # (N, H, W) or (N, D, H, W), values {0, 1}
+            targets = mask.long().squeeze(1)        # (N, H, W) or (N, D, H, W), values {0, 1}
+
             metrics = (self.train_metrics if stage == "train" else
                        self.val_metrics if stage == "val" else
                           self.test_metrics)
+            
             for name, metric in metrics.items():
-                metric.update(probs, mask)
+                if name == "dice":
+                    metric.update(preds, targets)
+                else:
+                    metric.update(probs, mask)
                 self.log(f"{stage}_{name}", metric, on_epoch=True, on_step=False, prog_bar=True, sync_dist=True)
 
         # Logging

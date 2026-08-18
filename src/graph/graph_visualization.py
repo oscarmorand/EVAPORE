@@ -8,49 +8,158 @@ import numpy as np
 import networkx as nx
 import matplotlib.pyplot as plt
 import logging
+import plotly.graph_objects as go
+from skimage import measure
 
 from graph.graph_labeling import generate_graph_edge_radius_decay, generate_graph_topological_classification, generate_graph_depth
 from graph.graph_utils import find_max_radius_node, TopologicalClass
 from graph.graph_stats import graph_attribute_histogram, graph_depth_histogram, graph_hierarchy_histogram, graph_nodes_degree_histogram, graph_radius_histogram, get_histogram_difference
 from graph.graph_pred_state import EdgePredState
 
-
 logger = logging.getLogger(__name__)
 
 
-def get_virtual_centerline(x0: int, y0: int, x1: int, y1: int) -> np.ndarray:
-    # find absolute differences
-    dx = abs(x0 - x1)
-    dy = abs(y0 - y1)
+def get_virtual_centerline(pos_start: np.ndarray, pos_goal: np.ndarray) -> np.ndarray:
+    '''
+    Generates a straight-line (DDA-style) sequence of integer coordinates
+    between pos_start and pos_goal, in mask-index order (e.g. (row, col) for 2D,
+    (d, row, col) for 3D). Works for any number of dimensions.
 
-    # find maximum difference
-    steps = max(dx, dy)
+    Args:
+        pos_start (np.ndarray): shape (D,) starting coordinate.
+        pos_goal (np.ndarray): shape (D,) goal coordinate.
 
-    # calculate the increment in x and y
-    xinc = dx/steps * (1 if x1 > x0 else -1)
-    yinc = dy/steps * (1 if y1 > y0 else -1)
+    Returns:
+        np.ndarray: shape (L, D) sequence of integer coordinates from start to goal.
+    '''
+    p0 = np.asarray(pos_start, dtype=float)
+    p1 = np.asarray(pos_goal, dtype=float)
 
-    # start with 1st point
-    x = float(x0)
-    y = float(y0)
+    diff = p1 - p0
+    steps = int(np.max(np.abs(diff)))
 
-    # make a list for coordinates
-    x_coordinates = []
-    y_coordinates = []
+    if steps == 0:
+        return p0[None, :].astype(np.int32)
 
-    for i in range(steps):
-        # append the x,y coordinates in respective list
-        x_coordinates.append(x)
-        y_coordinates.append(y)
+    increments = diff / steps
+    t = np.arange(steps + 1)[:, None]           # (steps+1, 1)
+    points = p0[None, :] + t * increments[None, :]  # (steps+1, D)
+    points[-1] = p1  # avoid float drift on the last point
 
-        # increment the values
-        x = x + xinc
-        y = y + yinc
-    x_coordinates.append(x1)
-    y_coordinates.append(y1)
+    return points.astype(np.int32)
 
-    centerline = np.array([x_coordinates, y_coordinates]).T.astype(np.int32)
-    return centerline
+
+def display_graph_overlay_vol(gt: np.ndarray, graph: nx.Graph) -> None:
+    """
+    Visualize the graph and the ground truth mesh using Plotly.
+
+    Args:
+        graph (nx.Graph): The graph to visualize.
+        gt (np.ndarray): The ground truth 3D array for mesh extraction.
+    """
+
+    # extract surface
+    verts, faces, _, _ = measure.marching_cubes(gt, level=0.5)
+
+    fig = go.Figure(
+        data=[
+            go.Mesh3d(
+                x=verts[:,0],
+                y=verts[:,1],
+                z=verts[:,2],
+                i=faces[:,0],
+                j=faces[:,1],
+                k=faces[:,2],
+                opacity=0.5
+            )
+        ]
+    )
+
+    skeleton_indices = []
+    node_index = None
+
+    for u, v, data in graph.edges(data=True):
+        centerline = np.array(data["centerline"])
+        if centerline is None:
+            continue
+        edge_pred_state = data.get("edge_pred_state", None)
+
+        color = "red"
+        if edge_pred_state is not None:
+            if edge_pred_state.value == EdgePredState.IN_PREDICTION.value:
+                color = "green"
+            elif edge_pred_state.value == EdgePredState.NOT_IN_PREDICTION.value:
+                color = "red"
+            else:
+                color = "blue"
+
+        fig.add_trace(
+            go.Scatter3d(
+                x=centerline[:,0],
+                y=centerline[:,1],
+                z=centerline[:,2],
+                mode="lines",
+                line=dict(color=color, width=5)
+            )
+        )
+
+        skeleton_indices.append(len(fig.data)-1)
+
+    node_positions = []
+    for node, data in graph.nodes(data=True):
+        pos = np.array(data["pos"])
+        node_positions.append(pos)
+    node_positions = np.array(node_positions)
+
+    node_index = len(fig.data)-1
+    
+    fig.add_trace(
+        go.Scatter3d(
+            x=node_positions[:,0],
+            y=node_positions[:,1],
+            z=node_positions[:,2],
+            mode="markers",
+            marker=dict(size=3, color="orange"),
+            name="nodes",
+            showlegend=False
+        )
+    )
+
+    fig.update_layout(
+        showlegend=False,
+        width=1200,
+        height=800,
+        updatemenus=
+        [
+            dict(
+                type="buttons",
+                buttons=[
+                    dict(
+                        label="Hide mesh",
+                        method="update",
+                        args=[{"visible": [False] + [True] * len(skeleton_indices) + [True]}]
+                    ),
+                    dict(
+                        label="Hide skeleton",
+                        method="update",
+                        args=[{"visible": [True] + [False] * len(skeleton_indices) + [True]}]
+                    ),
+                    dict(
+                        label="Hide nodes",
+                        method="update",
+                        args=[{"visible": [True] + [True] * len(skeleton_indices) + [False]}]
+                    ),
+                    dict(
+                        label="Show all",
+                        method="update",
+                        args=[{"visible": [True] * (len(skeleton_indices) + 2)}]
+                    )
+                ]
+            )
+        ]
+    )
+
+    fig.show()
 
 
 def get_graph_overlay_img(img: np.ndarray,
@@ -92,7 +201,7 @@ def get_graph_overlay_img(img: np.ndarray,
                 color = [0, 255, 255]  # Cyan for virtual edges
                 x0, y0 = graph.nodes[u]['pos']
                 x1, y1 = graph.nodes[v]['pos']
-                centerline = get_virtual_centerline(x0, y0, x1, y1)
+                centerline = get_virtual_centerline((x0, y0), (x1, y1))
 
             if centerline is None:
                 print(centerline, edge_pred_state, virtual_edge)
@@ -106,7 +215,7 @@ def get_graph_overlay_img(img: np.ndarray,
 
     return viz
 
-def display_graph_overlay(img: np.ndarray,
+def display_graph_overlay_img(img: np.ndarray,
                        graph: nx.Graph,
                        show_edges: bool = True,
                        figsize: tuple[int, int] = (8, 8)
@@ -119,12 +228,20 @@ def display_graph_overlay(img: np.ndarray,
         graph (nx.Graph): Vascular graph to overlay.
     """
     viz = get_graph_overlay_img(img, graph, show_edges)
-
     plt.figure(figsize=figsize)
     plt.imshow(viz)
     plt.axis('off')
     plt.show()
 
+def display_graph_overlay(img: np.ndarray,
+                          graph: nx.Graph,
+                          show_edges: bool = True,
+                          figsize: tuple[int, int] = (8, 8)
+) -> None:
+    if img.ndim == 2:
+        display_graph_overlay_img(img, graph, show_edges, figsize)
+    else:
+        display_graph_overlay_vol(img, graph)
 
 def display_edges_set(graph: nx.MultiGraph,
                       edges: set,
