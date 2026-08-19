@@ -1,102 +1,144 @@
 import json
 import os
 import torch
+from pathlib import Path
 import torch.nn.functional as F
 from torch.utils.data import Dataset
 from PIL import Image
 import numpy as np
 from tqdm import tqdm
 
+from image_segmentation.data.io_utils import load_array
+
+_SUPPORTED_EXTENSIONS = (
+    ".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff", ".pt"
+)
+
 class ImageDataset(Dataset):
-    IMAGE_PATH = 'img'
-    GT_PATH = 'gt'
-    FOREGROUND_MASK_PATH = 'foreground_masks'
+    IMAGE_DIR = 'img'
+    GT_DIR = 'gt'
+    FOREGROUND_MASK_DIR = 'foreground_masks'
 
     def __init__(self,
                  data_dir: str,
-                 transforms=None
+                 transforms=None,
+                 mask_input: bool = False,
+                 background_fill_value: float = 0.0,
     ):
         super().__init__()
+
+        self.data_dir = Path(data_dir)
+        self.dataset_name = self.data_dir.name.split("_")[0]
         self.transforms = transforms
+        self.mask_input = mask_input
+        self.background_fill_value = background_fill_value
 
-        self.data_dir = data_dir
-        self.dataset_name = os.path.basename(data_dir).split("_")[0]
-        self.img_path = os.path.join(self.data_dir, self.IMAGE_PATH)
-        self.gt_path = os.path.join(self.data_dir, self.GT_PATH)
-        self.foreground_mask_path = os.path.join(self.data_dir, self.FOREGROUND_MASK_PATH)
+        self.img_dir = self.data_dir / self.IMAGE_DIR
+        self.gt_dir = self.data_dir / self.GT_DIR
+        self.foreground_mask_dir = self.data_dir / self.FOREGROUND_MASK_DIR
 
-        self.img_list = self.get_filenames(self.img_path, extension="png")
-        self.gt_list = self.get_filenames(self.gt_path, extension="png")
-        self.foreground_mask_list = self.get_filenames(self.foreground_mask_path, extension="pt")
-        self.foreground_available = len(self.foreground_mask_list) > 0
+        self.img_paths = self._list_files(self.img_dir)
+        self.gt_paths = self._list_files(self.gt_dir)
+        self.foreground_mask_paths = self._list_files(self.foreground_mask_dir)
+        self.foreground_available = len(self.foreground_mask_paths) > 0
 
-    def __len__(self):
-        return len(self.img_list)
-    
-    def _get_foreground_mask(self, idx, gt_shape):
-        if not self.foreground_available:
-            return None
-
-        mask_path = (
-            self.foreground_mask_list[idx]
-            if len(self.foreground_mask_list) > 1
-            else self.foreground_mask_list[0]
-        )
-
-        if mask_path.endswith(".pt"):
-            fg_mask = torch.load(mask_path)
-
-            fg_mask = F.interpolate(
-                fg_mask.unsqueeze(0).unsqueeze(0).float(),
-                size=gt_shape,
-                mode="nearest",
+        if self.gt_paths and len(self.gt_paths) != len(self.img_paths):
+            raise ValueError(
+                f"Found {len(self.img_paths)} images but {len(self.gt_paths)} "
+                f"ground truths in {self.data_dir}"
+            )
+        if self.foreground_available and len(self.foreground_mask_paths) not in (1, len(self.img_paths)):
+            raise ValueError(
+                f"Expected either 1 shared foreground mask or one per image "
+                f"({len(self.img_paths)}), found {len(self.foreground_mask_paths)}."
             )
 
-            fg_mask = fg_mask.squeeze()
-            fg_mask = (fg_mask > 0).cpu().numpy()
+    def __len__(self):
+        return len(self.img_paths)
 
+    def _list_files(self, directory: Path) -> list:
+        if not directory.exists():
+            return []
+        files = [
+            f for f in directory.iterdir()
+            if f.name.startswith(self.dataset_name)
+            and any("".join(f.suffixes).lower().endswith(ext) for ext in _SUPPORTED_EXTENSIONS)
+        ]
+        return sorted(files)
+
+    @staticmethod
+    def _as_tensor(array) -> torch.Tensor:
+        return array if torch.is_tensor(array) else torch.as_tensor(array)
+
+    @staticmethod
+    def _to_unit_scale(array: np.ndarray) -> np.ndarray:
+        """8-bit images -> [0, 1]. Volumes (CT/MRI, ...) keep their native
+        intensity scale, since it isn't bounded to 255. Standardize those
+        using the dataset mean/std from ``get_dataset_stats`` in your
+        transform pipeline instead (e.g. ``A.Normalize(mean=..., std=...)``).
+        """
+        if array.dtype == np.uint8:
+            return array.astype(np.float32) / 255.0
+        return array.astype(np.float32)
+    
+    def _load_foreground_mask(self, idx: int, target_shape: tuple) -> np.ndarray:
+        mask_path = (
+            self.foreground_mask_paths[idx]
+            if len(self.foreground_mask_paths) == len(self.img_paths)
+            else self.foreground_mask_paths[0]
+        )
+
+        if mask_path.suffix == ".pt":
+            fg_mask = torch.load(mask_path).float()
+            fg_mask = F.interpolate(
+                fg_mask[None, None], size=tuple(int(s) for s in target_shape), mode="nearest"
+            ).squeeze()
+            fg_mask = (fg_mask > 0).numpy()
         else:
-            fg_mask = np.array(Image.open(mask_path).convert("L"))
-            fg_mask = fg_mask > 0
+            fg_mask = load_array(mask_path, grayscale=True) > 0
 
-        assert fg_mask.shape == gt_shape
-        return fg_mask.astype(bool)
+        if fg_mask.shape != tuple(target_shape):
+            raise ValueError(
+                f"Foreground mask shape {fg_mask.shape} != target shape {target_shape} for {mask_path}"
+            )
+        return fg_mask.astype(np.float32)
 
 
-    def __getitem__(self, idx):
-        img = np.array(Image.open(self.img_list[idx])).astype(np.float32)
-        img = img / 255.0  # Normalize to [0, 1]
-        gt = np.array(Image.open(self.gt_list[idx]).convert("L"))
-        gt = (gt > 0).astype(np.float32)
+    def __getitem__(self, idx: int):
+        img = self._to_unit_scale(load_array(self.img_paths[idx]))
+        gt = (load_array(self.gt_paths[idx], grayscale=True) > 0).astype(np.float32)
 
         fg_mask = None
         if self.foreground_available:
-            fg_mask = self._get_foreground_mask(idx, gt.shape).astype(np.float32)
-
-            img = img * fg_mask[..., None]
+            fg_mask = self._load_foreground_mask(idx, gt.shape)
             gt = gt * fg_mask
 
-        if self.transforms:
-            if fg_mask is not None:
-                augmented = self.transforms(image=img, mask=gt, fg_mask=fg_mask)
-                fg_mask = augmented["fg_mask"]
-            else:
-                augmented = self.transforms(image=img, mask=gt)
-            img = augmented["image"]
-            gt = augmented["mask"].unsqueeze(0).float()
+            if self.mask_input:
+                broadcast_mask = fg_mask[..., None] if img.ndim == fg_mask.ndim + 1 else fg_mask
+                img = np.where(broadcast_mask > 0, img, self.background_fill_value).astype(np.float32)
+
+        sample = {"image": img, "mask": gt}
+        if fg_mask is not None:
+            sample["fg_mask"] = fg_mask
+
+        if self.transforms is not None:
+            # NB: if you pass a fg_mask, your albumentations `Compose` needs
+            # `additional_targets={"fg_mask": "mask"}` so it receives the
+            # same spatial transform as the ground truth.
+            sample = self.transforms(**sample)
+
+        img = self._as_tensor(sample["image"]).float()
+        gt = self._as_tensor(sample["mask"]).float()
+        if gt.ndim == img.ndim - 1:
+            gt = gt.unsqueeze(0)
 
         return img, gt
-
-    def get_filenames(self, path: str, extension: str):
-        files_list = []
-        filenames = os.listdir(path)
-        filenames = [filename for filename in filenames if (filename.split(".")[0].split("_")[0] == self.dataset_name and filename.split(".")[1] == extension)]
-        filenames.sort()
-        for filename in filenames:
-            files_list.append(os.path.join(path, filename))
-        return files_list
     
-    def get_dataset_stats(self, split_name: str = None, split_indices: list[int] = None):
+    def get_dataset_stats(self, 
+                          split_name: str = None, 
+                          split_indices: list[int] = None, 
+                          fov: float = None
+    ) -> dict:
         filename = 'image_stats.json'
         stats_filepath = os.path.join(self.data_dir, filename)
         if os.path.exists(stats_filepath):
@@ -115,14 +157,25 @@ class ImageDataset(Dataset):
             if split_indices is None:
                 split_indices = list(range(len(self.img_list)))
                 
-            print(f"Computing dataset stats for split '{split_name}' using all image pixels...")
-            full_img_stats = self.compute_dataset_stats(split_indices, use_foreground_mask=False)
-            stats = {'full_image': full_img_stats}
+            stats = {}
+
+            width, height, n_channels = self.compute_dataset_image_stats(split_indices)
+            stats['image_width'] = width
+            stats['image_height'] = height
+            stats['n_channels'] = n_channels
+
+            full_img_pixel_values_stats = self.compute_dataset_pixel_values_stats(split_indices, use_foreground_mask=False)
+            stats['full_image'] = full_img_pixel_values_stats
 
             if self.foreground_available:
-                print(f"Computing dataset stats for split '{split_name}' using only foreground pixels...")
-                foreground_stats = self.compute_dataset_stats(split_indices, use_foreground_mask=True)
-                stats['foreground'] = foreground_stats
+                foreground_pixel_values_stats = self.compute_dataset_pixel_values_stats(split_indices, use_foreground_mask=True)
+                stats['foreground'] = foreground_pixel_values_stats
+
+            if fov is not None and self.foreground_available:
+                pixel_res, median_width = self.compute_dataset_resolution(split_indices, fov)
+                stats['field_of_view_degrees'] = fov
+                stats['estimated_resolution_mm_per_pixel'] = pixel_res
+                stats['median_foreground_width_pixels'] = median_width
 
             all_stats[split_name] = stats
             print(f"Saving dataset stats for split '{split_name}' to {stats_filepath}...")
@@ -131,12 +184,25 @@ class ImageDataset(Dataset):
 
         return stats
     
-    def compute_dataset_stats(self, split_indices: list[int] = None, use_foreground_mask: bool = True):
+    def compute_dataset_image_stats(self, 
+                                    split_indices: list[int]
+    ) -> tuple[int, int, int]:
+        img_path = self.img_list[split_indices[0]]
+        img = np.array(Image.open(img_path), dtype=np.float32)
+        width, height = img.shape[:2]
+        n_channels = img.shape[2] if len(img.shape) == 3 else 1
+        return width, height, n_channels
+
+    def compute_dataset_pixel_values_stats(self, 
+                                           split_indices: list[int], 
+                                           use_foreground_mask: bool = True
+    ) -> dict:
         sum_ = np.zeros(3, dtype=np.float64)
         sum_sq = np.zeros(3, dtype=np.float64)
         n_pixels = 0
 
-        for i in tqdm(split_indices, desc="Computing dataset stats on images"):
+        desc_suffix = "foreground pixels" if use_foreground_mask else "all pixels"
+        for i in tqdm(split_indices, desc=f"Computing dataset pixel values statistics on images using {desc_suffix}"):
             img_path = self.img_list[i]
             img = np.array(Image.open(img_path), dtype=np.float32) / 255.0
 
@@ -159,3 +225,63 @@ class ImageDataset(Dataset):
             'std': std.tolist(),
         }
         return res
+    
+    def compute_dataset_resolution(self, 
+                                   split_indices: list[int], 
+                                   fov: float
+    ) -> float:
+        """
+        Compute the resolution of the dataset based on the foreground masks and field of view.
+        This method is only an estimate of the reel resolution of the dataset, and should be used with caution. 
+        It assumes that the foreground masks are accurate and that the field of view is correctly specified.
+
+        Args:
+            split_indices (list[int]): The indices of the images to use for computing the resolution.
+            fov (float): The field of view of the images in degrees. This should be provided by the user based on the imaging setup used to capture the dataset.
+
+        Returns:
+            float: The estimated resolution of the dataset in mm/pixel.
+        """
+        if fov is None or fov <= 0 or fov > 180:
+            raise ValueError(f"Invalid FOV provided: {fov}, must be in the range (0, 180) degrees.")
+        if not self.foreground_available:
+            raise ValueError("Foreground masks are required to compute dataset resolution, but none are available.")
+            
+        widths = []
+        for i in tqdm(split_indices, desc="Computing dataset resolution statistics on images"):
+            fg_mask = self._get_foreground_mask(i, None)
+            if fg_mask is not None:
+                bounding_box_width = np.sum(np.any(fg_mask, axis=0))
+                widths.append(bounding_box_width)
+        median_width = int(np.median(widths))
+        fov_rad = np.deg2rad(fov)
+        pixel_res = 2 * fov_rad * 12 / float(median_width) # Assuming an eyeball radius of 12mm, 24mm diameter being a common approximation for the human eye
+        return pixel_res, median_width
+    
+    def get_dataset_distance_hparams(self):
+        hparams_filepath = os.path.join(self.data_dir, 'distances_hparams.json')
+        print(f"Loading dataset distance hyperparameters from {hparams_filepath}...")
+        if os.path.exists(hparams_filepath):
+            with open(hparams_filepath, 'r') as f:
+                hparams = json.load(f)
+        else:
+            raise FileNotFoundError(f"Distance hyperparameters file not found at {hparams_filepath}. Please compute the distance hyperparameters by running the 11_centerline_length_study.ipynb notebook.")
+        return hparams
+    
+    @classmethod
+    def length_in_pixels_to_mm(cls, length_in_pixels: float, pixel_res_mm_per_pixel: float):
+        return length_in_pixels * pixel_res_mm_per_pixel
+    
+    @classmethod
+    def length_in_mm_to_pixels(cls, length_in_mm: float, pixel_res_mm_per_pixel: float):
+        return length_in_mm / pixel_res_mm_per_pixel
+    
+    @classmethod
+    def length_in_pixels_to_another_res(cls, length_in_pixels: float, original_res: float, target_res: float):
+        length_in_mm = cls.length_in_pixels_to_mm(length_in_pixels, original_res)
+        return cls.length_in_mm_to_pixels(length_in_mm, target_res)
+    
+    @classmethod
+    def res_to_another_res(cls, original_res: float, target_res: float):
+        scale_factor = original_res / target_res
+        return scale_factor

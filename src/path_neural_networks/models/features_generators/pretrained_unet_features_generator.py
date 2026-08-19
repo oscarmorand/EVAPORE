@@ -33,6 +33,9 @@ class PretrainedUnetFeaturesGenerator(UnetFeaturesGenerator):
             out_channels = last_conv_in_channels
         else:
             net.layers[-1] = nn.Conv2d(in_channels=last_conv_in_channels, out_channels=out_channels, kernel_size=1, stride=1)
+            last_conv = net.layers[-1]
+
+        self.last_conv_weights = last_conv.weight.data.cpu().flatten()
 
         super().__init__(net, out_channels, skip_connection=skip_connection, *args, **kwargs)
 
@@ -40,7 +43,7 @@ class PretrainedUnetFeaturesGenerator(UnetFeaturesGenerator):
         return {
             **super().as_dict(),
             "ckpt_path": self.ckpt_path,
-            "device": self.device,
+            "out_channels": self.out_channels,
             "freeze_pretrained": self.freeze_pretrained,
             "skip_connection": self.skip_connection
         }
