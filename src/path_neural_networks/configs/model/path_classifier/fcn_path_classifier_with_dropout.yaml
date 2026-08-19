@@ -1,0 +1,4 @@
+defaults:
+  - fcn_path_classifier
+
+dropout: [0.3, 0.2]

@@ -48,3 +48,13 @@ src/**/configs/local/*
 /data/
 /logs/
 .env
+
+# Notebooks wandb
+notebooks/*.ipynb
+notebooks/lightning_logs/
+notebooks/*.ckpt
+notebooks/*.json
+
+checkpoints/*/unet_pretraining/
+checkpoints/*/main_model_training/
+checkpoints/*/tests/

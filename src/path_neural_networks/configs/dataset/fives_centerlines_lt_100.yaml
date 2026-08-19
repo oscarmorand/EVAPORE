@@ -1,0 +1,8 @@
+defaults:
+  - fives_clean_dataset
+
+centerline_dir: euclidean_lt_100_clean_centerlines
+
+classes_stats:
+  classes_count: [88733, 22829]
+  classes_ratio: [0.7953693910112762, 0.20463060898872376]

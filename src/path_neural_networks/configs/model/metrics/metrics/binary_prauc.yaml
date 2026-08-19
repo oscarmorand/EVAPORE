@@ -1,0 +1,2 @@
+binary_precision:
+  _target_: path_neural_networks.models.metrics.BinaryPRAUC

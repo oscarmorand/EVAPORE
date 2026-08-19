@@ -1,0 +1,10 @@
+_target_: path_neural_networks.data.ImageCenterlineDatamodule
+
+val_split: 0.2
+test_split: 0.1
+num_workers: 0
+seed: ${seed.split}
+
+train_transforms: ${data_augmentation.train}
+val_transforms: ${data_augmentation.val}
+test_transforms: ${data_augmentation.test}

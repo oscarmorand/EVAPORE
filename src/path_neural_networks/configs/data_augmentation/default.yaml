@@ -1,0 +1,3 @@
+train: ${data_augmentation/basic_random_data_augmentation}
+val: ${data_augmentation/no_data_augmentation}
+test: ${data_augmentation/no_data_augmentation}

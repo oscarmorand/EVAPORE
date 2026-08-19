@@ -1,0 +1,9 @@
+defaults:
+  - image_centerline_dataset
+
+data_dir: /home/morand/afs/EVAPORE/data/FIVES_clean
+centerline_dir: ???
+
+image_stats_foreground_only:
+  mean: [0.44802179970399514, 0.20161722107814045, 0.08166193638311593]
+  std: [0.17309487618178002, 0.1008616880561624, 0.0519719956678824]

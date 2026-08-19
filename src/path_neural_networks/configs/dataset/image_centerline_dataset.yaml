@@ -1,0 +1,3 @@
+_target_: path_neural_networks.data.ImageCenterlineDataset
+data_dir: ???
+centerline_dir: ???

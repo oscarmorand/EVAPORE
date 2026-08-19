@@ -1,0 +1,4 @@
+defaults:
+  - pretrained_unet
+
+freeze_weights: true

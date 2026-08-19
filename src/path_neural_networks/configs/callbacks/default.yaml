@@ -1,0 +1,6 @@
+defaults:
+  - model_checkpoint_loss
+  - model_checkpoint_pr_auc
+  - early_stopping_loss
+  - model_summary
+  - rich_progress_bar

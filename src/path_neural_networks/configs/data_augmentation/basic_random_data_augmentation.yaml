@@ -1,0 +1,7 @@
+_target_: albumentations.Compose
+
+transforms:
+  - ${data_augmentation.transforms.random_brightness_contrast}
+  - ${data_augmentation.transforms.gaussian_noise}
+  - ${data_augmentation.transforms.normalize}
+  - ${data_augmentation.transforms.to_tensor}

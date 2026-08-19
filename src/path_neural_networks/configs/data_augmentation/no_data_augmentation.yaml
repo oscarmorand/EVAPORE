@@ -1,0 +1,5 @@
+_target_: albumentations.Compose
+
+transforms:
+  - ${data_augmentation.transforms.normalize}
+  - ${data_augmentation.transforms.to_tensor}
