@@ -1,11 +1,11 @@
 [project]
-name = "graph-neural-networks"
+name = "EVAPORE"
 version = "0.1.0"
-description = "PyTorch Geometric + Lightning + Hydra. A user-friendly toolbox/template for experimenting with Graph Neural Networks (GNNs)."
+description = "Learning to Reconnect: Graph-based Path Classification for Restoring Retinal Vessel Segmentation Connectivity"
 readme = "README.md"
-repository = "https://github.com/nathanpainchaud/graph-neural-networks"
+repository = "https://github.com/oscarmorand/EVAPORE"
 authors = [
-    {name = "Nathan Painchaud", email = "nathan.painchaud@insa-lyon.fr"},
+    {name = "Oscar Morand", email = "oscar.morand@epita.fr"},
 ]
 requires-python = ">=3.12,<4"
 dependencies = [
@@ -81,10 +81,6 @@ test = [
     "pytest-cov>=7,<8",
     "sh>=2.2.1,<3",
 ]
-
-[project.scripts]
-gnn-train = "graph_neural_networks.train:main"
-gnn-eval = "graph_neural_networks.eval:main"
 
 [build-system]
 requires = ["uv_build>=0.9,<0.10"]
