@@ -53,6 +53,8 @@ src/**/configs/local/*
 notebooks/*.ipynb
 notebooks/lightning_logs/
 notebooks/*.ckpt
+notebooks/*.json
 
-checkpoints/unet_pretraining/
-checkpoints/main_model_training/
+checkpoints/*/unet_pretraining/
+checkpoints/*/main_model_training/
+checkpoints/*/tests/

@@ -2,7 +2,8 @@ import torch
 import warnings
 
 from path_neural_networks.models.path_samplers import PathSampler
-from path_neural_networks.models.path_samplers.sampling_aggregation_method import SamplingAggregationMethod, SamplingMaxAggregation
+from path_neural_networks.models.path_samplers import SamplingAggregationMethod
+from path_neural_networks.models.path_samplers import SamplingMaxAggregation
 
 class SquarePathSampler(PathSampler):
     def __init__(self, 

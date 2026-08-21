@@ -11,6 +11,7 @@ from typing import Optional, Sequence, Union
 
 import numpy as np
 import torch
+from pathlib import Path
 import torch.nn.functional as F
 from torch.utils.data import Dataset
 from tqdm import tqdm
@@ -63,9 +64,13 @@ class ImageDataset(Dataset):
         self.mask_input = mask_input
         self.background_fill_value = background_fill_value
 
-        self.img_paths = self._list_files(self.data_dir / self.IMAGE_DIR)
-        self.gt_paths = self._list_files(self.data_dir / self.GT_DIR)
-        self.foreground_mask_paths = self._list_files(self.data_dir / self.FOREGROUND_MASK_DIR)
+        self.img_dir = self.data_dir / self.IMAGE_DIR
+        self.gt_dir = self.data_dir / self.GT_DIR
+        self.foreground_mask_dir = self.data_dir / self.FOREGROUND_MASK_DIR
+
+        self.img_paths = self._list_files(self.img_dir)
+        self.gt_paths = self._list_files(self.gt_dir)
+        self.foreground_mask_paths = self._list_files(self.foreground_mask_dir)
         self.foreground_available = len(self.foreground_mask_paths) > 0
 
         if self.gt_paths and len(self.gt_paths) != len(self.img_paths):
@@ -79,8 +84,56 @@ class ImageDataset(Dataset):
                 f"({len(self.img_paths)}), found {len(self.foreground_mask_paths)}."
             )
 
-    def __len__(self) -> int:
+    def __len__(self):
         return len(self.img_paths)
+
+    def _list_files(self, directory: Path) -> list:
+        if not directory.exists():
+            return []
+        files = [
+            f for f in directory.iterdir()
+            if f.name.startswith(self.dataset_name)
+            and any("".join(f.suffixes).lower().endswith(ext) for ext in _SUPPORTED_EXTENSIONS)
+        ]
+        return sorted(files)
+
+    @staticmethod
+    def _as_tensor(array) -> torch.Tensor:
+        return array if torch.is_tensor(array) else torch.as_tensor(array)
+
+    @staticmethod
+    def _to_unit_scale(array: np.ndarray) -> np.ndarray:
+        """8-bit images -> [0, 1]. Volumes (CT/MRI, ...) keep their native
+        intensity scale, since it isn't bounded to 255. Standardize those
+        using the dataset mean/std from ``get_dataset_stats`` in your
+        transform pipeline instead (e.g. ``A.Normalize(mean=..., std=...)``).
+        """
+        if array.dtype == np.uint8:
+            return array.astype(np.float32) / 255.0
+        return array.astype(np.float32)
+    
+    def _load_foreground_mask(self, idx: int, target_shape: tuple) -> np.ndarray:
+        mask_path = (
+            self.foreground_mask_paths[idx]
+            if len(self.foreground_mask_paths) == len(self.img_paths)
+            else self.foreground_mask_paths[0]
+        )
+
+        if mask_path.suffix == ".pt":
+            fg_mask = torch.load(mask_path).float()
+            fg_mask = F.interpolate(
+                fg_mask[None, None], size=tuple(int(s) for s in target_shape), mode="nearest"
+            ).squeeze()
+            fg_mask = (fg_mask > 0).numpy()
+        else:
+            fg_mask = load_array(mask_path, grayscale=True) > 0
+
+        if fg_mask.shape != tuple(target_shape):
+            raise ValueError(
+                f"Foreground mask shape {fg_mask.shape} != target shape {target_shape} for {mask_path}"
+            )
+        return fg_mask.astype(np.float32)
+
 
     def __getitem__(self, idx: int):
         img = self._to_unit_scale(load_array(self.img_paths[idx]))
@@ -111,35 +164,17 @@ class ImageDataset(Dataset):
             gt = gt.unsqueeze(0)
 
         return img, gt
-
-    @staticmethod
-    def _as_tensor(array) -> torch.Tensor:
-        return array if torch.is_tensor(array) else torch.as_tensor(array)
-
-    @staticmethod
-    def _to_unit_scale(array: np.ndarray) -> np.ndarray:
-        """8-bit images -> [0, 1]. Volumes (CT/MRI, ...) keep their native
-        intensity scale, since it isn't bounded to 255. Standardize those
-        using the dataset mean/std from ``get_dataset_stats`` in your
-        transform pipeline instead (e.g. ``A.Normalize(mean=..., std=...)``).
-        """
-        if array.dtype == np.uint8:
-            return array.astype(np.float32) / 255.0
-        return array.astype(np.float32)
-
-    def _load_foreground_mask(self, idx: int, target_shape: tuple) -> np.ndarray:
-        mask_path = (
-            self.foreground_mask_paths[idx]
-            if len(self.foreground_mask_paths) == len(self.img_paths)
-            else self.foreground_mask_paths[0]
-        )
-
-        if mask_path.suffix == ".pt":
-            fg_mask = torch.load(mask_path).float()
-            fg_mask = F.interpolate(
-                fg_mask[None, None], size=tuple(int(s) for s in target_shape), mode="nearest"
-            ).squeeze()
-            fg_mask = (fg_mask > 0).numpy()
+    
+    def get_dataset_stats(self, 
+                          split_name: str = None, 
+                          split_indices: list[int] = None, 
+                          fov: float = None
+    ) -> dict:
+        filename = 'image_stats.json'
+        stats_filepath = os.path.join(self.data_dir, filename)
+        if os.path.exists(stats_filepath):
+            with open(stats_filepath, 'r') as f:
+                all_stats = json.load(f)
         else:
             fg_mask = load_array(mask_path, grayscale=True) > 0
 
@@ -172,34 +207,62 @@ class ImageDataset(Dataset):
         split_name = split_name or "full_dataset"
         if split_name in all_stats:
             print(f"Loading dataset stats for split '{split_name}' from {stats_filepath}...")
-            return all_stats[split_name]
+            stats = all_stats[split_name]
+        else:
+            if split_indices is None:
+                split_indices = list(range(len(self.img_list)))
+                
+            stats = {}
 
-        split_indices = split_indices if split_indices is not None else range(len(self))
+            width, height, n_channels = self.compute_dataset_image_stats(split_indices)
+            stats['image_width'] = width
+            stats['image_height'] = height
+            stats['n_channels'] = n_channels
 
-        print(f"Computing dataset stats for split '{split_name}' (all pixels)...")
-        stats = {"full_image": self.compute_dataset_stats(split_indices, use_foreground_mask=False)}
+            full_img_pixel_values_stats = self.compute_dataset_pixel_values_stats(split_indices, use_foreground_mask=False)
+            stats['full_image'] = full_img_pixel_values_stats
 
-        if self.foreground_available:
-            print(f"Computing dataset stats for split '{split_name}' (foreground only)...")
-            stats["foreground"] = self.compute_dataset_stats(split_indices, use_foreground_mask=True)
+            if self.foreground_available:
+                foreground_pixel_values_stats = self.compute_dataset_pixel_values_stats(split_indices, use_foreground_mask=True)
+                stats['foreground'] = foreground_pixel_values_stats
+
+            if fov is not None and self.foreground_available:
+                pixel_res, median_width = self.compute_dataset_resolution(split_indices, fov)
+                stats['field_of_view_degrees'] = fov
+                stats['estimated_resolution_mm_per_pixel'] = pixel_res
+                stats['median_foreground_width_pixels'] = median_width
+
+            all_stats[split_name] = stats
+            print(f"Saving dataset stats for split '{split_name}' to {stats_filepath}...")
+            with open(stats_filepath, 'w') as f:
+                json.dump(all_stats, f, indent=4)
 
         all_stats[split_name] = stats
         print(f"Saving dataset stats for split '{split_name}' to {stats_filepath}...")
         stats_filepath.write_text(json.dumps(all_stats, indent=4))
         return stats
+    
+    def compute_dataset_image_stats(self, 
+                                    split_indices: list[int]
+    ) -> tuple[int, int, int]:
+        img_path = self.img_list[split_indices[0]]
+        img = np.array(Image.open(img_path), dtype=np.float32)
+        width, height = img.shape[:2]
+        n_channels = img.shape[2] if len(img.shape) == 3 else 1
+        return width, height, n_channels
 
-    def compute_dataset_stats(
-        self, split_indices: Optional[Sequence[int]] = None, use_foreground_mask: bool = True
+    def compute_dataset_pixel_values_stats(self, 
+                                           split_indices: list[int], 
+                                           use_foreground_mask: bool = True
     ) -> dict:
-        split_indices = split_indices if split_indices is not None else range(len(self))
+        sum_ = np.zeros(3, dtype=np.float64)
+        sum_sq = np.zeros(3, dtype=np.float64)
+        n_pixels = 0
 
-        channel_sum, channel_sum_sq, n_pixels = None, None, 0
-
-        for i in tqdm(split_indices, desc="Computing dataset stats"):
-            img = self._to_unit_scale(load_array(self.img_paths[i]))
-            n_channels = img.shape[-1] if img.ndim == 3 and img.shape[-1] in (1, 3, 4) else 1
-            spatial_shape = img.shape[:-1] if n_channels > 1 else img.shape
-            pixels = img.reshape(-1, n_channels)
+        desc_suffix = "foreground pixels" if use_foreground_mask else "all pixels"
+        for i in tqdm(split_indices, desc=f"Computing dataset pixel values statistics on images using {desc_suffix}"):
+            img_path = self.img_list[i]
+            img = np.array(Image.open(img_path), dtype=np.float32) / 255.0
 
             if self.foreground_available and use_foreground_mask:
                 fg_mask = self._load_foreground_mask(i, spatial_shape)
@@ -213,6 +276,68 @@ class ImageDataset(Dataset):
             channel_sum_sq += (pixels.astype(np.float64) ** 2).sum(axis=0)
             n_pixels += pixels.shape[0]
 
-        mean = channel_sum / n_pixels
-        std = np.sqrt(channel_sum_sq / n_pixels - mean ** 2)
-        return {"mean": mean.tolist(), "std": std.tolist()}
+        res = {
+            'mean': mean.tolist(),
+            'std': std.tolist(),
+        }
+        return res
+    
+    def compute_dataset_resolution(self, 
+                                   split_indices: list[int], 
+                                   fov: float
+    ) -> float:
+        """
+        Compute the resolution of the dataset based on the foreground masks and field of view.
+        This method is only an estimate of the reel resolution of the dataset, and should be used with caution. 
+        It assumes that the foreground masks are accurate and that the field of view is correctly specified.
+
+        Args:
+            split_indices (list[int]): The indices of the images to use for computing the resolution.
+            fov (float): The field of view of the images in degrees. This should be provided by the user based on the imaging setup used to capture the dataset.
+
+        Returns:
+            float: The estimated resolution of the dataset in mm/pixel.
+        """
+        if fov is None or fov <= 0 or fov > 180:
+            raise ValueError(f"Invalid FOV provided: {fov}, must be in the range (0, 180) degrees.")
+        if not self.foreground_available:
+            raise ValueError("Foreground masks are required to compute dataset resolution, but none are available.")
+            
+        widths = []
+        for i in tqdm(split_indices, desc="Computing dataset resolution statistics on images"):
+            fg_mask = self._get_foreground_mask(i, None)
+            if fg_mask is not None:
+                bounding_box_width = np.sum(np.any(fg_mask, axis=0))
+                widths.append(bounding_box_width)
+        median_width = int(np.median(widths))
+        fov_rad = np.deg2rad(fov)
+        pixel_res = 2 * fov_rad * 12 / float(median_width) # Assuming an eyeball radius of 12mm, 24mm diameter being a common approximation for the human eye
+        return pixel_res, median_width
+    
+    def get_dataset_distance_hparams(self):
+        hparams_filepath = os.path.join(self.data_dir, 'distances_hparams.json')
+        print(f"Loading dataset distance hyperparameters from {hparams_filepath}...")
+        if os.path.exists(hparams_filepath):
+            with open(hparams_filepath, 'r') as f:
+                hparams = json.load(f)
+        else:
+            raise FileNotFoundError(f"Distance hyperparameters file not found at {hparams_filepath}. Please compute the distance hyperparameters by running the 11_centerline_length_study.ipynb notebook.")
+        return hparams
+    
+    @classmethod
+    def length_in_pixels_to_mm(cls, length_in_pixels: float, pixel_res_mm_per_pixel: float):
+        return length_in_pixels * pixel_res_mm_per_pixel
+    
+    @classmethod
+    def length_in_mm_to_pixels(cls, length_in_mm: float, pixel_res_mm_per_pixel: float):
+        return length_in_mm / pixel_res_mm_per_pixel
+    
+    @classmethod
+    def length_in_pixels_to_another_res(cls, length_in_pixels: float, original_res: float, target_res: float):
+        length_in_mm = cls.length_in_pixels_to_mm(length_in_pixels, original_res)
+        return cls.length_in_mm_to_pixels(length_in_mm, target_res)
+    
+    @classmethod
+    def res_to_another_res(cls, original_res: float, target_res: float):
+        scale_factor = original_res / target_res
+        return scale_factor
