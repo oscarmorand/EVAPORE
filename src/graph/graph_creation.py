@@ -8,7 +8,7 @@ import logging
 import numpy as np
 import networkx as nx
 from skimage.morphology import skeletonize, closing, disk
-from scipy.ndimage import distance_transform_edt
+from scipy.ndimage import distance_transform_cdt, distance_transform_edt
 from networkx import from_scipy_sparse_array
 from skan.csr import skeleton_to_csgraph
 
@@ -24,22 +24,23 @@ logger = logging.getLogger(__name__)
 
 def skeleton_to_graph(
         skeleton: np.ndarray,
-        distance_map: np.ndarray
+        distance_map: np.ndarray = None,
         ) -> nx.Graph:
     """
-    Convert a skeleton (binary 2D array) to a pixel-level NetworkX graph.
+    Convert a skeleton (binary 2D/3D array) to a pixel-level NetworkX graph.
 
     This function transforms a binary skeleton into a graph where each pixel
     becomes a node. Uses the skan library for robust skeleton-to-graph conversion
-    with proper 2D connectivity analysis.
+    with proper 2D/3D connectivity analysis.
 
     Args:
-        skeleton: Binary 2D array representing vessel skeleton
-        distance_map: 2D array representing the distance map for radius extraction
+        skeleton: Binary 2D/3D array representing vessel skeleton
+        distance_map: 2D/3D array representing the distance map for radius extraction
+        benchmark: Optional BenchmarkStruct to record timing information
 
     Returns:
         NetworkX graph with nodes at each skeleton pixel, edges between connected pixels.
-        Each node has 'pos' (2D coordinates) and 'radius' (from distance map) attributes.
+        Each node has 'pos' (2D/3D coordinates) and 'radius' (from distance map) attributes.
     """
     # Count input skeleton pixels
     input_pixel_count = np.sum(skeleton > 0)
@@ -59,7 +60,7 @@ def skeleton_to_graph(
     for node_id in graph.nodes:
         pos = pixel_coordinates[node_id].tolist()
         graph.nodes[node_id]["pos"] = pos
-        graph.nodes[node_id]["radius"] = distance_map[pos[0], pos[1]]
+        graph.nodes[node_id]["radius"] = distance_map[tuple(pos)] if distance_map is not None else None
 
     return graph
 
@@ -103,7 +104,7 @@ def get_edge_data(graph: nx.Graph,
 
     Returns:
         tuple: (centerline, radius_list, length)
-               - centerline: List of 2D coordinates along the edge
+               - centerline: List of 2D/3D coordinates along the edge
                - radius_list: List of radius values at each point
                - length: Edge length (from 'weight' attribute or default 1.0)
     """
@@ -117,6 +118,7 @@ def get_edge_data(graph: nx.Graph,
         "radius",
         [graph.nodes[start].get("radius", 0.0), graph.nodes[end].get("radius", 0.0)],
     )
+    
     length = edge.get("weight", 1.0)
     return centerline, radius, length
 
@@ -146,7 +148,7 @@ def follow_path(graph: nx.Graph,
     Returns:
         tuple: (end_node, centerline, radius, total_length)
                - end_node: Final significant node reached
-               - centerline: Combined 2D coordinates along entire path
+               - centerline: Combined 2D/3D coordinates along entire path
                - radius: Combined radius values along entire path
                - total_length: Sum of all edge lengths in the path
     """
@@ -203,7 +205,7 @@ def path_already_exists(graph: nx.MultiGraph,
         graph: NetworkX MultiGraph to check
         start: Start node ID
         end: End node ID
-        centerline: List of 3D coordinates representing the proposed edge's centerline
+        centerline: List of 2D/3D coordinates representing the proposed edge's centerline
 
     Returns:
         bool: True if an identical path already exists, False otherwise
@@ -227,7 +229,7 @@ def create_branch_graph(graph: nx.Graph) -> nx.MultiGraph:
     Edge Attributes:
         - id: Unique numeric identifier
         - name: Human-readable identifier ("edge_N")
-        - centerline: 2D coordinates along vessel centerline
+        - centerline: 2D/3D coordinates along vessel centerline
         - radius: Radius values along centerline
         - length: Total vessel segment length
         - min/max/mean_radius: Statistical measures
@@ -273,7 +275,7 @@ def create_branch_graph(graph: nx.Graph) -> nx.MultiGraph:
                 branches_graph.add_node(
                     node,
                     pos=graph.nodes[node]["pos"],
-                    radius=graph.nodes[node].get("radius", 0.0),
+                    radius=graph.nodes[node].get("radius", None),
                 )
 
             # Create edge with all geometric properties
@@ -284,10 +286,7 @@ def create_branch_graph(graph: nx.Graph) -> nx.MultiGraph:
                 name=f"edge_{edge_counter}",
                 centerline=centerline,
                 radius=radius,
-                length=length,
-                min_radius=min(radius),
-                max_radius=max(radius),
-                mean_radius=float(np.mean(radius)) if radius else 0.0,
+                length=length
             )
             edge_counter += 1
 
@@ -337,7 +336,7 @@ def verify_pixel_coverage(
             pixel_pos = tuple(int(round(coord)) for coord in pos)
 
             # Ensure coordinates are within skeleton bounds
-            if (0 <= pixel_pos[0] < original_skeleton.shape[0]) and (0 <= pixel_pos[1] < original_skeleton.shape[1]):
+            if all(0 <= pixel_pos[dim] < original_skeleton.shape[dim] for dim in range(original_skeleton.ndim)):
                 covered_pixels.add(pixel_pos)
 
     # Calculate coverage statistics
@@ -363,20 +362,19 @@ def verify_pixel_coverage(
     else:
         logger.info("Perfect skeleton coverage achieved!")
 
-
 # =============================================================================
 # HIGH-LEVEL GRAPH CREATION FUNCTION
 # =============================================================================
 
 def build_base_graph(skeleton: np.ndarray,
-                      distance_map: np.ndarray
+                      distance_map: np.ndarray = None
                       ) -> nx.MultiGraph:
     """
     Convert a binary skeleton mask to a branch-level graph.
 
     Args:
-        skeleton (np.ndarray): Binary skeleton mask (2D array)
-        distance_map (np.ndarray): Distance map (2D array)
+        skeleton (np.ndarray): Binary skeleton mask
+        distance_map (np.ndarray, optional): Distance map
 
     Returns:
         nx.MultiGraph: Branch-level graph representation
@@ -398,15 +396,17 @@ def build_base_graph(skeleton: np.ndarray,
 def img_to_graph(img: np.ndarray, 
                  clean: bool = True, 
                  closing_radius: int = 0,
-                 return_pixel_graph: bool = False
+                 compute_radius: bool = True,
+                 approximate_radius: bool = False
                  ) -> nx.Graph:
     """Convert an image to a graph representation.
 
     Args:
-        img (np.ndarray): Binary image (2D array)
+        img (np.ndarray): Binary image (3D array)
         clean (bool, optional): Whether to clean the graph. Defaults to True.
         closing_radius (int, optional): Radius for morphological closing. Defaults to 0.
-        return_pixel_graph (bool, optional): Whether to return the pixel-level graph. Defaults to False.
+        compute_radius (bool, optional): Whether to compute node radii. Defaults to True.
+        approximate_radius (bool, optional): Whether to use approximate radius computation. Defaults to False.
 
     Returns:
         nx.Graph: Graph representation of the image.
@@ -416,17 +416,23 @@ def img_to_graph(img: np.ndarray,
     if closing_radius > 0:
         img = closing(img, disk(closing_radius))
 
-    # Skeletonize image and compute distance map
+    # Skeletonize image
+    img = img.astype(bool)
     skel = skeletonize(img).astype(int)
-    distance_map = distance_transform_edt(img)
+
+    # compute distance map if needed
+    distance_map = None
+    if compute_radius:
+        if approximate_radius:
+            distance_map = distance_transform_cdt(img)
+        else:
+            distance_map = distance_transform_edt(img)
 
     # Convert skeleton to branch-level graph
-    G, pixel_G = build_base_graph(skel, distance_map)
+    G, _ = build_base_graph(skel, distance_map)
 
     # Optionally clean the graph
     if clean:
         G = clean_graph(G, min_length=10.0, radius_ratio_threshold=0.3, length_ratio_threshold=1.5)
-    
-    if return_pixel_graph:
-        return G, pixel_G
+
     return G

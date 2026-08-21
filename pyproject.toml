@@ -26,7 +26,9 @@ dependencies = [
     "plotly>=6.5.1,<7.0",
     "jupytext>=1.18.1,<2.0",
     "ipykernel>=7.1.0,<8.0",
-    "albumentations>=2.0.8,<3.0"
+    "albumentations>=2.0.8,<3.0",
+    "nibabel>=5.4.2",
+    "torchio>=1.2.1",
 ]
 [project.optional-dependencies]
 all = [
@@ -189,8 +191,7 @@ markers = [
 minversion = "9.0"
 strict = true
 testpaths = [
-    "tests/",
-    "src/graph_neural_networks/", # to run doctests
+    "tests/"
 ]
 
 [tool.coverage.run]

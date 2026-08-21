@@ -90,15 +90,12 @@ class OversampleNodesTransform:
                     local_length = float(lengths[i])
                     local_centerline = centerline[i0:i1 + 1].tolist()
                     local_radius = radius[i0:i1 + 1]
-                    min_radius = np.min(local_radius)
-                    max_radius = np.max(local_radius)
-                    mean_radius = np.mean(local_radius)
                     local_radius = local_radius.tolist()
 
                     if edge_pred_state is not None:
-                        G.add_edge(n0, n1,id=edge_counter, name=name, centerline=local_centerline, radius=local_radius, length=local_length, min_radius=min_radius, max_radius=max_radius, mean_radius=mean_radius, edge_pred_state=edge_pred_state)
+                        G.add_edge(n0, n1,id=edge_counter, name=name, centerline=local_centerline, radius=local_radius, length=local_length, edge_pred_state=edge_pred_state)
                     else:
-                        G.add_edge(n0, n1,id=edge_counter, name=name, centerline=local_centerline, radius=local_radius, length=local_length, min_radius=min_radius, max_radius=max_radius, mean_radius=mean_radius)
+                        G.add_edge(n0, n1,id=edge_counter, name=name, centerline=local_centerline, radius=local_radius, length=local_length)
                     edge_counter += 1
                     new_edge_sampled = True
 

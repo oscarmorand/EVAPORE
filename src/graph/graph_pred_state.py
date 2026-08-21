@@ -1,9 +1,11 @@
 from enum import Enum
 import networkx as nx
 import numpy as np
-from scipy.ndimage import binary_dilation
+from scipy.ndimage import binary_dilation, distance_transform_cdt
+from skimage.morphology import skeletonize
 
 from graph.graph_creation import img_to_graph
+from graph.graph_utils import bounding_box, sparse_binary_dilation
 
 class EdgePredState(Enum):
     NOT_IN_PREDICTION = 0
@@ -75,4 +77,46 @@ def get_combined_graph(gt, pred):
     g_not_in_p_graph = img_to_graph(g_skel_not_in_p_dilated, clean=False)
 
     combined_graph = combine_graphs(g_in_p_graph, g_not_in_p_graph, radius_map)
+    return combined_graph
+
+
+def get_combined_graph_optim(gt: np.ndarray, 
+                       pred: np.ndarray,
+                       ) -> nx.MultiGraph:
+    """
+    Combine ground truth and predicted graphs into a single multi-graph.
+
+    Args:
+        gt (np.ndarray): Ground truth binary skeleton mask (2D/3D array)
+        pred (np.ndarray): Predicted binary skeleton mask (2D/3D array)
+
+    Returns:
+        nx.MultiGraph: Combined graph with edges labeled by prediction state.
+    """
+
+    gt_bbox = bounding_box(gt.astype(bool))
+    pred_bbox = bounding_box(pred.astype(bool))
+    union_bbox = tuple(slice(min(g.start, p.start), max(g.stop, p.stop)) for g, p in zip(gt_bbox, pred_bbox))
+    gt = gt[union_bbox]
+    pred = pred[union_bbox]
+
+    # Skeletonize image
+    skel_g = skeletonize(gt.astype(bool))
+
+    # compute distance map and then radius map
+    distance_map = distance_transform_cdt(gt)
+    radius_map = np.zeros_like(distance_map)
+    radius_map[skel_g] = distance_map[skel_g]
+
+    g_skel_in_p = np.logical_and(skel_g, pred)
+    g_skel_not_in_p = np.logical_and(skel_g, np.logical_not(pred))
+
+    g_skel_not_in_p_dilated = sparse_binary_dilation(g_skel_not_in_p)
+    g_skel_not_in_p_dilated = np.logical_and(g_skel_not_in_p_dilated, skel_g)
+
+    g_in_p_graph = img_to_graph(g_skel_in_p, False, 0, False, False)
+    g_not_in_p_graph = img_to_graph(g_skel_not_in_p_dilated, False, 0, False, False)
+
+    combined_graph = combine_graphs(g_in_p_graph, g_not_in_p_graph, radius_map)
+
     return combined_graph

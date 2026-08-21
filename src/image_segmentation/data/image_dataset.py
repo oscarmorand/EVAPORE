@@ -1,32 +1,63 @@
+"""Dataset for image/volume segmentation.
+
+Supports both 2D images (png, jpg, ...) and 3D volumes (nii, nii.gz, mgz)
+transparently, based on file extension, via ``io_utils.load_array``.
+"""
+from __future__ import annotations
+
 import json
-import os
+from pathlib import Path
+from typing import Optional, Sequence, Union
+
+import numpy as np
 import torch
 from pathlib import Path
 import torch.nn.functional as F
 from torch.utils.data import Dataset
-from PIL import Image
-import numpy as np
 from tqdm import tqdm
 
 from image_segmentation.data.io_utils import load_array
 
 _SUPPORTED_EXTENSIONS = (
-    ".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff", ".pt"
+    ".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff",
+    ".nii", ".nii.gz", ".mgz", ".mgh",
+    ".pt",
 )
 
-class ImageDataset(Dataset):
-    IMAGE_DIR = 'img'
-    GT_DIR = 'gt'
-    FOREGROUND_MASK_DIR = 'foreground_masks'
 
-    def __init__(self,
-                 data_dir: str,
-                 transforms=None,
-                 mask_input: bool = False,
-                 background_fill_value: float = 0.0,
+class ImageDataset(Dataset):
+    """Segmentation dataset: image/volume + ground-truth (+ optional foreground mask).
+
+    Transforms are applied here, inside ``__getitem__``, not in the
+    DataLoader. This is the standard PyTorch pattern, for two reasons:
+
+    1. Most augmentations (random crop, flip, elastic deformation, ...) are
+       per-sample operations that must happen *before* samples are stacked
+       into a batch - the DataLoader/collate_fn only sees already-batched
+       tensors, which is too late for that.
+    2. It lets each split use a different transform pipeline (e.g. augment
+       at train time, resize-only at val/test time) while sharing the exact
+       same Dataset implementation - only the ``transforms`` object attached
+       to each instance changes. That's exactly what ``ImageDatamodule``
+       does below: it builds one ``ImageDataset`` per split with its own
+       transforms, on the same ``data_dir``.
+
+    The DataLoader's job is only to batch, shuffle and parallelize loading -
+    not to transform data.
+    """
+
+    IMAGE_DIR = "img"
+    GT_DIR = "gt"
+    FOREGROUND_MASK_DIR = "foreground_masks"
+
+    def __init__(
+        self,
+        data_dir: Union[str, Path],
+        transforms=None,
+        mask_input: bool = False,
+        background_fill_value: float = 0.0,
     ):
         super().__init__()
-
         self.data_dir = Path(data_dir)
         self.dataset_name = self.data_dir.name.split("_")[0]
         self.transforms = transforms
@@ -145,11 +176,35 @@ class ImageDataset(Dataset):
             with open(stats_filepath, 'r') as f:
                 all_stats = json.load(f)
         else:
-            all_stats = {}
+            fg_mask = load_array(mask_path, grayscale=True) > 0
 
-        if split_name is None:
-            split_name = 'full_dataset'
-                
+        if fg_mask.shape != tuple(target_shape):
+            raise ValueError(
+                f"Foreground mask shape {fg_mask.shape} != target shape {target_shape} for {mask_path}"
+            )
+        return fg_mask.astype(np.float32)
+
+    def _list_files(self, directory: Path) -> list:
+        if not directory.exists():
+            return []
+        files = [
+            f for f in directory.iterdir()
+            if f.name.startswith(self.dataset_name)
+            and any("".join(f.suffixes).lower().endswith(ext) for ext in _SUPPORTED_EXTENSIONS)
+        ]
+        return sorted(files)
+
+    # ------------------------------------------------------------------
+    # Dataset statistics (for normalization via transforms)
+    # ------------------------------------------------------------------
+
+    def get_dataset_stats(
+        self, split_name: Optional[str] = None, split_indices: Optional[Sequence[int]] = None
+    ) -> dict:
+        stats_filepath = self.data_dir / "image_stats.json"
+        all_stats = json.loads(stats_filepath.read_text()) if stats_filepath.exists() else {}
+
+        split_name = split_name or "full_dataset"
         if split_name in all_stats:
             print(f"Loading dataset stats for split '{split_name}' from {stats_filepath}...")
             stats = all_stats[split_name]
@@ -182,6 +237,9 @@ class ImageDataset(Dataset):
             with open(stats_filepath, 'w') as f:
                 json.dump(all_stats, f, indent=4)
 
+        all_stats[split_name] = stats
+        print(f"Saving dataset stats for split '{split_name}' to {stats_filepath}...")
+        stats_filepath.write_text(json.dumps(all_stats, indent=4))
         return stats
     
     def compute_dataset_image_stats(self, 
@@ -206,19 +264,17 @@ class ImageDataset(Dataset):
             img_path = self.img_list[i]
             img = np.array(Image.open(img_path), dtype=np.float32) / 255.0
 
-            fg_mask = None
             if self.foreground_available and use_foreground_mask:
-                fg_mask = self._get_foreground_mask(i, img.shape[:2])
-                pixels = img[fg_mask > 0]
-            else:
-                pixels = img.reshape(-1, 3)
+                fg_mask = self._load_foreground_mask(i, spatial_shape)
+                pixels = pixels[fg_mask.reshape(-1) > 0]
 
-            sum_ += pixels.sum(axis=0)
-            sum_sq += (pixels ** 2).sum(axis=0)
+            if channel_sum is None:
+                channel_sum = np.zeros(pixels.shape[1], dtype=np.float64)
+                channel_sum_sq = np.zeros(pixels.shape[1], dtype=np.float64)
+
+            channel_sum += pixels.sum(axis=0)
+            channel_sum_sq += (pixels.astype(np.float64) ** 2).sum(axis=0)
             n_pixels += pixels.shape[0]
-
-        mean = sum_ / n_pixels
-        std = np.sqrt(sum_sq / n_pixels - mean ** 2)
 
         res = {
             'mean': mean.tolist(),

@@ -9,8 +9,7 @@ class UnetFeaturesGenerator(FeaturesGenerator):
                  out_channels: int,
                  skip_connection: bool = False,
                  *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.net = net
+        super().__init__(out_channels=out_channels, net=net, *args, **kwargs)
         self.skip_connection = skip_connection
 
         self.out_channels = out_channels

@@ -2,19 +2,47 @@ import torch
 
 from path_neural_networks.models.path_samplers import PathSampler
 
+
 class SinglePointPathSampler(PathSampler):
-    def __init__(self, in_channels: int, **kwargs):
-        super().__init__(in_channels)
+    def __init__(self, 
+                 in_channels: int,
+                 n_dim: int = 2,
+                 **kwargs):
+        
+        super().__init__(in_channels, ndim=n_dim, **kwargs)
+        
         self.out_channels = in_channels
 
-    def forward(self,
-                feature_maps: torch.Tensor,
-                path: torch.Tensor
+    def forward(
+        self,
+        feature_maps: torch.Tensor,
+        path: torch.Tensor
     ) -> torch.Tensor:
-        path = path.type(torch.long).squeeze(dim=0)  # shape (path_length, 2)
-        path_features = feature_maps[:, :, path[:, 0], path[:, 1]]  # shape (1, channels, path_length)
+        """
+        Args:
+            feature_maps:
+                2D: [1, C, H, W]
+                3D: [1, C, D, H, W]
+
+            path:
+                2D: [1, L, 2]
+                3D: [1, L, 3]
+
+        Returns:
+            [1, C, L]
+        """
+
+        path = path.long().squeeze(0)  # [L, ndim] ([L, 2] or [L, 3])
+
+        # Split coordinates
+        coords = path.long().unbind(dim=1) # [L, 2] -> [L], [L] or [L, 3] -> [L], [L], [L]
+
+        # Dynamic indexing
+        path_features = feature_maps[:, :, *coords]
+
         return path_features
-    
+
+
     def as_dict(self):
         return {
             "cls": self.__class__.__name__,
