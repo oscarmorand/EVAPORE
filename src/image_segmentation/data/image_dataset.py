@@ -8,13 +8,14 @@ from __future__ import annotations
 import json
 from pathlib import Path
 from typing import Optional, Sequence, Union
-
 import numpy as np
 import torch
 from pathlib import Path
 import torch.nn.functional as F
 from torch.utils.data import Dataset
 from tqdm import tqdm
+import os
+from PIL import Image
 
 from image_segmentation.data.io_utils import load_array
 
@@ -164,25 +165,6 @@ class ImageDataset(Dataset):
             gt = gt.unsqueeze(0)
 
         return img, gt
-    
-    def get_dataset_stats(self, 
-                          split_name: str = None, 
-                          split_indices: list[int] = None, 
-                          fov: float = None
-    ) -> dict:
-        filename = 'image_stats.json'
-        stats_filepath = os.path.join(self.data_dir, filename)
-        if os.path.exists(stats_filepath):
-            with open(stats_filepath, 'r') as f:
-                all_stats = json.load(f)
-        else:
-            fg_mask = load_array(mask_path, grayscale=True) > 0
-
-        if fg_mask.shape != tuple(target_shape):
-            raise ValueError(
-                f"Foreground mask shape {fg_mask.shape} != target shape {target_shape} for {mask_path}"
-            )
-        return fg_mask.astype(np.float32)
 
     def _list_files(self, directory: Path) -> list:
         if not directory.exists():
@@ -199,12 +181,22 @@ class ImageDataset(Dataset):
     # ------------------------------------------------------------------
 
     def get_dataset_stats(
-        self, split_name: Optional[str] = None, split_indices: Optional[Sequence[int]] = None
+            self, 
+            split_name: Optional[str] = None,
+            split_indices: Optional[Sequence[int]] = None, 
+            fov: float = None
     ) -> dict:
+        
         stats_filepath = self.data_dir / "image_stats.json"
-        all_stats = json.loads(stats_filepath.read_text()) if stats_filepath.exists() else {}
+        if os.path.exists(stats_filepath):
+            with open(stats_filepath, 'r') as f:
+                all_stats = json.load(f)
+        else:
+            all_stats = {}
 
-        split_name = split_name or "full_dataset"
+        if split_name is None:
+            split_name = 'full_dataset'
+
         if split_name in all_stats:
             print(f"Loading dataset stats for split '{split_name}' from {stats_filepath}...")
             stats = all_stats[split_name]
@@ -264,17 +256,19 @@ class ImageDataset(Dataset):
             img_path = self.img_list[i]
             img = np.array(Image.open(img_path), dtype=np.float32) / 255.0
 
+            fg_mask = None
             if self.foreground_available and use_foreground_mask:
-                fg_mask = self._load_foreground_mask(i, spatial_shape)
-                pixels = pixels[fg_mask.reshape(-1) > 0]
+                fg_mask = self._get_foreground_mask(i, img.shape[:2])
+                pixels = img[fg_mask > 0]
+            else:
+                pixels = img.reshape(-1, 3)
 
-            if channel_sum is None:
-                channel_sum = np.zeros(pixels.shape[1], dtype=np.float64)
-                channel_sum_sq = np.zeros(pixels.shape[1], dtype=np.float64)
-
-            channel_sum += pixels.sum(axis=0)
-            channel_sum_sq += (pixels.astype(np.float64) ** 2).sum(axis=0)
+            sum_ += pixels.sum(axis=0)
+            sum_sq += (pixels ** 2).sum(axis=0)
             n_pixels += pixels.shape[0]
+
+        mean = sum_ / n_pixels
+        std = np.sqrt(sum_sq / n_pixels - mean ** 2)
 
         res = {
             'mean': mean.tolist(),

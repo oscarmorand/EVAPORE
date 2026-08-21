@@ -3,8 +3,9 @@ import os
 from utils.path import get_data_dir, get_checkpoint_dir
 
 class Dataset:
-    def __init__(self, name: str, preferred_train_split: str = "train"):
+    def __init__(self, name: str, ndim: int, preferred_train_split: str = "train"):
         self.name = name
+        self.ndim = ndim
         self.preferred_train_split = preferred_train_split
         self.data_dir = get_data_dir(self.name)
         self.checkpoint_dir = get_checkpoint_dir(self.name)
@@ -19,7 +20,8 @@ class Dataset:
 
 
 available_datasets = {
-    "FIVES": Dataset("FIVES", preferred_train_split="train_clean")
-    #"DRIVE": Dataset("DRIVE", preferred_train_split="train")
-    #"CHASE": Dataset("CHASE", preferred_train_split="train")
+    "FIVES": Dataset("FIVES", ndim=2, preferred_train_split="train_clean"),
+    #"DRIVE": Dataset("DRIVE", ndim=2, preferred_train_split="train"),
+    #"CHASE": Dataset("CHASE", ndim=2, preferred_train_split="train"),
+    "PERSEVERE_subset": Dataset("PERSEVERE_subset", ndim=2, preferred_train_split="train")
 }
