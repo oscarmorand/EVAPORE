@@ -72,7 +72,6 @@ def build_image_train_transform(
     mean: Sequence[float],
     std: Sequence[float],
     patch_size: int,
-    add_noise_std: Sequence[float] = (0.005, 0.015),
 ) -> A.Compose:
     return A.Compose(
         [
@@ -96,7 +95,7 @@ def build_image_train_transform(
                 contrast_limit=(-0.15, 0.15),
                 p=0.5,
             ),
-            A.Lambda(image=AddGaussNoise(std=add_noise_std), p=0.5),
+            A.Lambda(image=AddGaussNoise(std=(0.005, 0.015)), p=0.5),
             A.Normalize(mean=mean, std=std, max_pixel_value=1.0),
             ToTensorV2(),
         ],
@@ -188,7 +187,6 @@ def build_volume_train_transform(
     mean: Sequence[float],
     std: Sequence[float],
     patch_size: Union[int, Sequence[int]],
-    add_noise_std: Sequence[float] = (0.005, 0.015),
     horizontal_axis: int = 2,
     vertical_axis: int = 1,
 ) -> VolumeTransform:
@@ -210,7 +208,7 @@ def build_volume_train_transform(
                 p=0.5,
             ),
             tio.CropOrPad(patch_size, mask_name="mask"),
-            tio.RandomNoise(std=add_noise_std, p=0.5, include=["image"]),
+            tio.RandomNoise(std=(0.005, 0.015), p=0.5, include=["image"]),
         ]
     )
     return VolumeTransform(
@@ -246,14 +244,13 @@ def build_val_transform(ndim: int,
 def build_train_transform(ndim: int,
                           mean: Sequence[float],
                           std: Sequence[float],
-                          patch_size: Union[int, Sequence[int]],
-                          add_noise_std: Sequence[float] = (0.005, 0.015)
+                          patch_size: Union[int, Sequence[int]]
 ) -> A.Compose | VolumeTransform:
     
     if ndim == 2:
-        return build_image_train_transform(mean, std, patch_size, add_noise_std)
+        return build_image_train_transform(mean, std, patch_size)
     elif ndim == 3:
-        return build_volume_train_transform(mean, std, patch_size, add_noise_std)
+        return build_volume_train_transform(mean, std, patch_size)
     raise ValueError(
         f"Unsupported number of dimensions {ndim}. Expected 2 or 3 dimensions."
     )
