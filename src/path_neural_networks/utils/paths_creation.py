@@ -3,6 +3,7 @@ import torch
 import numpy as np
 from skimage.morphology import dilation, disk
 from skimage.measure import label
+from typing import List
 
 
 def get_query_edges(graph: nx.Graph, n_closest: int = 1, max_dist: float = None) -> torch.Tensor:
@@ -53,19 +54,24 @@ def get_query_edges(graph: nx.Graph, n_closest: int = 1, max_dist: float = None)
 
 # ======== Cleaning paths functions ========
 
-def cut_mask_from_negative_edges(centerline, mask):
+def cut_mask_from_negative_edges(centerline: np.ndarray, mask: np.ndarray) -> List[List[int]]:
     centerline_mask = np.zeros_like(mask, dtype=bool)
-    for (x, y) in centerline:
-        centerline_mask[x, y] = True
+    for coords in centerline:
+        if len(coords) != mask.ndim:
+            raise ValueError(
+                f"Coordinate dimensionality mismatch: point {coords} has "
+                f"{len(coords)} coords but mask.ndim={mask.ndim} (mask.shape={mask.shape})"
+            )
+        centerline_mask[tuple(coords)] = True
 
     combined_mask = np.logical_and(centerline_mask, np.logical_not(mask))
-    labeled_mask, num_labels = label(combined_mask, return_num=True, connectivity=2)
+    labeled_mask, num_labels = label(combined_mask, return_num=True, connectivity=mask.ndim)
+
     centerlines = [[] for _ in range(num_labels)]
-    for (x, y) in centerline:
-        label_id = labeled_mask[x, y]
+    for coords in centerline:
+        label_id = labeled_mask[tuple(coords)]
         if label_id > 0:
-            centerlines[label_id - 1].append([int(x), int(y)])
-    
+            centerlines[label_id - 1].append([int(c) for c in coords])
     return centerlines
 
 def cut_mask_from_negative_edges_for_all(centerlines, mask, classes=None, edges=None, return_old_centerlines=False):
@@ -96,40 +102,54 @@ def cut_mask_from_negative_edges_for_all(centerlines, mask, classes=None, edges=
         res["edges"] = new_edges
     return res
 
-def is_reconstructed_path_not_too_far(true_path_existing_centerline, true_path_reconstructed_centerline, distance_ratio_threshold):
-    sum_min_distances = 0
-    for (xr, yr) in true_path_reconstructed_centerline:
-        r = np.array([xr, yr])
-        min_dist = float('inf')
-        for (xe, ye) in true_path_existing_centerline:
-            e = np.array([xe, ye])
-            dist = np.linalg.norm(r - e)
-            if dist < min_dist:
-                min_dist = dist
-        sum_min_distances += min_dist
-    sum_min_distances /= len(true_path_reconstructed_centerline)
+def is_reconstructed_path_not_too_far(
+    true_path_existing_centerline: np.ndarray,      # (M, 2) or (M, 3)
+    true_path_reconstructed_centerline: np.ndarray,  # (N, 2) or (N, 3)
+    distance_ratio_threshold: float
+) -> bool:
+    existing = np.asarray(true_path_existing_centerline, dtype=float)
+    reconstructed = np.asarray(true_path_reconstructed_centerline, dtype=float)
+
+    # pairwise distances: (N, M)
+    diffs = reconstructed[:, None, :] - existing[None, :, :]
+    dists = np.linalg.norm(diffs, axis=-1)
+    min_dists = dists.min(axis=1)
+
+    sum_min_distances = min_dists.sum() / len(reconstructed)
     return sum_min_distances <= distance_ratio_threshold
 
-def remove_too_far_reconstructed_paths_for_all(true_path_existing_centerlines, true_path_reconstructed_centerlines, distance_ratio_threshold):
+
+def remove_too_far_reconstructed_paths_for_all(
+    true_path_existing_centerlines: List[np.ndarray],
+    true_path_reconstructed_centerlines: List[np.ndarray],
+    distance_ratio_threshold: float
+) -> List[int]:
     new_reconstructed_classes = []
     for i, true_path_reconstructed_centerline in enumerate(true_path_reconstructed_centerlines):
         true_path_existing_centerline = true_path_existing_centerlines[i]
-        condition = is_reconstructed_path_not_too_far(true_path_existing_centerline, true_path_reconstructed_centerline, distance_ratio_threshold)
+        condition = is_reconstructed_path_not_too_far(
+            true_path_existing_centerline,
+            true_path_reconstructed_centerline,
+            distance_ratio_threshold
+        )
         new_reconstructed_classes.append(int(condition))
     return new_reconstructed_classes
+
+from skimage.morphology import dilation, disk, ball
 
 def clean_paths_on_surface_of_mask(centerlines, mask, kernel_size=1, threshold=0.5, classes=None):
     new_centerlines = []
     if classes is not None:
         new_classes = []
-        
+
     labeled_mask = label(mask)
-    dilated_mask = dilation(labeled_mask, disk(kernel_size))
-    
+    footprint = disk(kernel_size) if mask.ndim == 2 else ball(kernel_size)
+    dilated_mask = dilation(labeled_mask, footprint)
+
     for i, centerline in enumerate(centerlines):
         centerline_mask = np.zeros_like(mask, dtype=np.uint8)
-        for (x, y) in centerline:
-            centerline_mask[x, y] = 1
+        for coords in centerline:
+            centerline_mask[tuple(coords)] = 1
 
         combined_mask = centerline_mask * dilated_mask
         values_on_mask = np.count_nonzero(combined_mask)

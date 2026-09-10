@@ -85,3 +85,86 @@ def load_array(path: Union[str, Path],
         f"Unsupported file extension for {path}. "
         f"Expected one of {IMAGE_SUFFIXES + VOLUME_SUFFIXES}."
     )
+
+def _save_by_format(array: np.ndarray, path: Path, is_vol: bool, affine=None) -> None:
+    """Internal: write array to path using the format implied by is_vol."""
+    if is_vol:
+        if nib is None:
+            raise ImportError(
+                "nibabel is required to save volume files (.nii/.nii.gz/.mgz). "
+                "Install it with `pip install nibabel`."
+            )
+        vol_affine = np.eye(4) if affine is None else affine
+        suffixes = "".join(path.suffixes).lower()
+        if suffixes.endswith((".mgz", ".mgh")):
+            image = nib.MGHImage(array, vol_affine)
+        else:
+            image = nib.Nifti1Image(array, vol_affine)
+        nib.save(image, str(path))
+    else:
+        Image.fromarray(array).save(path)
+
+
+def save_array_by_ndim(
+    array: np.ndarray,
+    folder: Union[str, Path],
+    name: str,
+    ndim: int,
+    affine: "np.ndarray | None" = None,
+) -> Path:
+    """Save an array to ``folder``, picking the format from ``ndim``.
+
+    - ``ndim == 2`` -> saved as ``name.png``.
+    - ``ndim == 3`` -> saved as ``name.nii.gz``.
+
+    Args:
+        array: the array to save.
+        folder: destination directory. Created if it doesn't exist.
+        name: filename without extension.
+        ndim: 2 for a 2D image, 3 for a 3D volume.
+        affine: for volumes only, the 4x4 affine to store in the header.
+            Defaults to the identity matrix if not provided.
+
+    Returns:
+        The full path the array was saved to.
+    """
+    if ndim not in (2, 3):
+        raise ValueError(f"Unsupported ndim={ndim!r}. Expected 2 or 3.")
+
+    folder = Path(folder)
+    folder.mkdir(parents=True, exist_ok=True)
+    ext = ".png" if ndim == 2 else ".nii.gz"
+    path = folder / f"{name}{ext}"
+
+    _save_by_format(array, path, is_vol=(ndim == 3), affine=affine)
+    return path
+
+
+def save_array(
+    array: np.ndarray,
+    path: Union[str, Path],
+    affine: "np.ndarray | None" = None,
+) -> None:
+    """Save an array to an explicit path, inferring format from its extension.
+
+    - ``.png/.jpg/.bmp/.tif/...`` -> saved via PIL.
+    - ``.nii/.nii.gz/.mgz/.mgh`` -> saved via nibabel.
+
+    Args:
+        array: the array to save.
+        path: full destination path, including extension.
+        affine: for volumes only, the 4x4 affine to store in the header.
+            Defaults to the identity matrix if not provided. Ignored for
+            images.
+    """
+    path = Path(path)
+
+    if is_volume(path):
+        _save_by_format(array, path, is_vol=True, affine=affine)
+    elif is_image(path):
+        _save_by_format(array, path, is_vol=False)
+    else:
+        raise ValueError(
+            f"Unsupported file extension for {path}. "
+            f"Expected one of {IMAGE_SUFFIXES + VOLUME_SUFFIXES}."
+        )

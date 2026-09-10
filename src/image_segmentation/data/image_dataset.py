@@ -23,6 +23,7 @@ _SUPPORTED_EXTENSIONS = (
     ".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff",
     ".nii", ".nii.gz", ".mgz", ".mgh",
     ".pt",
+    ".json"
 )
 
 
@@ -113,7 +114,7 @@ class ImageDataset(Dataset):
             return array.astype(np.float32) / 255.0
         return array.astype(np.float32)
     
-    def _load_foreground_mask(self, idx: int, target_shape: tuple) -> np.ndarray:
+    def _load_foreground_mask(self, idx: int) -> np.ndarray:
         mask_path = (
             self.foreground_mask_paths[idx]
             if len(self.foreground_mask_paths) == len(self.img_paths)
@@ -122,17 +123,10 @@ class ImageDataset(Dataset):
 
         if mask_path.suffix == ".pt":
             fg_mask = torch.load(mask_path).float()
-            fg_mask = F.interpolate(
-                fg_mask[None, None], size=tuple(int(s) for s in target_shape), mode="nearest"
-            ).squeeze()
             fg_mask = (fg_mask > 0).numpy()
         else:
             fg_mask = load_array(mask_path, grayscale=True) > 0
 
-        if fg_mask.shape != tuple(target_shape):
-            raise ValueError(
-                f"Foreground mask shape {fg_mask.shape} != target shape {target_shape} for {mask_path}"
-            )
         return fg_mask.astype(np.float32)
 
 
@@ -142,7 +136,7 @@ class ImageDataset(Dataset):
 
         fg_mask = None
         if self.foreground_available:
-            fg_mask = self._load_foreground_mask(idx, gt.shape)
+            fg_mask = self._load_foreground_mask(idx)
             gt = gt * fg_mask
 
             if self.mask_input:
@@ -181,10 +175,100 @@ class ImageDataset(Dataset):
     # ------------------------------------------------------------------
 
     def get_dataset_stats(
-            self, 
-            split_name: Optional[str] = None,
-            split_indices: Optional[Sequence[int]] = None, 
-            fov: float = None
+        self,
+        ndim: int,
+        input_channels: int,
+        split_name: Optional[str] = None,
+        split_indices: Optional[Sequence[int]] = None,
+    ) -> dict:
+        """Compute (or load cached) dataset statistics for 2D images or 3D volumes.
+
+        Args:
+            ndim: number of spatial dimensions of the data (2 for images, 3 for volumes).
+            split_name: name of the split to compute stats for. Defaults to the full dataset.
+            split_indices: indices to include. Defaults to all samples.
+        """
+        stats_filepath = self.data_dir / "image_stats.json"
+        if stats_filepath.exists():
+            with open(stats_filepath, "r") as f:
+                all_stats = json.load(f)
+        else:
+            all_stats = {}
+
+        if split_name is None:
+            split_name = "full_dataset"
+
+        if split_name in all_stats:
+            print(f"Loading dataset stats for split '{split_name}' from {stats_filepath}...")
+            return all_stats[split_name]
+
+        if split_indices is None:
+            split_indices = list(range(len(self.img_paths)))
+
+        stats: dict = {}
+
+        stats["full_image"] = self.compute_dataset_pixel_values_stats(
+            split_indices, input_channels=input_channels, use_foreground_mask=False
+        )
+
+        if self.foreground_available:
+            stats["foreground"] = self.compute_dataset_pixel_values_stats(
+                split_indices, input_channels=input_channels, use_foreground_mask=True
+            )
+
+        all_stats[split_name] = stats
+        print(f"Saving dataset stats for split '{split_name}' to {stats_filepath}...")
+        stats_filepath.write_text(json.dumps(all_stats, indent=4))
+        return stats
+
+
+    def compute_dataset_pixel_values_stats(
+        self,
+        split_indices: list[int],
+        input_channels: int,
+        use_foreground_mask: bool = True,
+    ) -> dict:
+        """Compute per-channel mean/std over the dataset (or its foreground).
+
+        Works for both 2D images and 3D volumes.
+        """
+        sum_ = np.zeros(input_channels, dtype=np.float64)
+        sum_sq = np.zeros(input_channels, dtype=np.float64)
+        n_pixels = 0
+
+        desc_suffix = "foreground pixels" if use_foreground_mask else "all pixels"
+        for i in tqdm(split_indices, desc=f"Computing dataset pixel values statistics on images using {desc_suffix}"):
+            img_path = self.img_paths[i]
+            img = self._to_unit_scale(load_array(img_path))
+
+            if self.foreground_available and use_foreground_mask:
+                fg_mask = self._load_foreground_mask(i)
+                pixels = img[fg_mask > 0]
+            else:
+                pixels = img.reshape(-1, input_channels)
+
+            pixels = pixels.reshape(-1, input_channels)
+            sum_ += pixels.sum(axis=0)
+            sum_sq += (pixels**2).sum(axis=0)
+            n_pixels += pixels.shape[0]
+
+        mean = sum_ / n_pixels
+        std = np.sqrt(sum_sq / n_pixels - mean**2)
+
+        return {
+            "mean": mean.tolist(),
+            "std": std.tolist(),
+        }
+
+
+
+class FundusImageDataset(ImageDataset):
+    def get_dataset_stats(
+        self,
+        ndim: int = 2,
+        split_name: Optional[str] = None,
+        split_indices: Optional[Sequence[int]] = None, 
+        fov: float = None
     ) -> dict:
         
         stats_filepath = self.data_dir / "image_stats.json"
@@ -202,13 +286,15 @@ class ImageDataset(Dataset):
             stats = all_stats[split_name]
         else:
             if split_indices is None:
-                split_indices = list(range(len(self.img_list)))
+                split_indices = list(range(len(self.img_paths)))
                 
             stats = {}
 
             width, height, n_channels = self.compute_dataset_image_stats(split_indices)
-            stats['image_width'] = width
-            stats['image_height'] = height
+            stats['width'] = width
+            stats['height'] = height
+            if ndim == 3:
+                stats['depth'] = height
             stats['n_channels'] = n_channels
 
             full_img_pixel_values_stats = self.compute_dataset_pixel_values_stats(split_indices, use_foreground_mask=False)
@@ -233,49 +319,7 @@ class ImageDataset(Dataset):
         print(f"Saving dataset stats for split '{split_name}' to {stats_filepath}...")
         stats_filepath.write_text(json.dumps(all_stats, indent=4))
         return stats
-    
-    def compute_dataset_image_stats(self, 
-                                    split_indices: list[int]
-    ) -> tuple[int, int, int]:
-        img_path = self.img_list[split_indices[0]]
-        img = np.array(Image.open(img_path), dtype=np.float32)
-        width, height = img.shape[:2]
-        n_channels = img.shape[2] if len(img.shape) == 3 else 1
-        return width, height, n_channels
 
-    def compute_dataset_pixel_values_stats(self, 
-                                           split_indices: list[int], 
-                                           use_foreground_mask: bool = True
-    ) -> dict:
-        sum_ = np.zeros(3, dtype=np.float64)
-        sum_sq = np.zeros(3, dtype=np.float64)
-        n_pixels = 0
-
-        desc_suffix = "foreground pixels" if use_foreground_mask else "all pixels"
-        for i in tqdm(split_indices, desc=f"Computing dataset pixel values statistics on images using {desc_suffix}"):
-            img_path = self.img_list[i]
-            img = np.array(Image.open(img_path), dtype=np.float32) / 255.0
-
-            fg_mask = None
-            if self.foreground_available and use_foreground_mask:
-                fg_mask = self._get_foreground_mask(i, img.shape[:2])
-                pixels = img[fg_mask > 0]
-            else:
-                pixels = img.reshape(-1, 3)
-
-            sum_ += pixels.sum(axis=0)
-            sum_sq += (pixels ** 2).sum(axis=0)
-            n_pixels += pixels.shape[0]
-
-        mean = sum_ / n_pixels
-        std = np.sqrt(sum_sq / n_pixels - mean ** 2)
-
-        res = {
-            'mean': mean.tolist(),
-            'std': std.tolist(),
-        }
-        return res
-    
     def compute_dataset_resolution(self, 
                                    split_indices: list[int], 
                                    fov: float

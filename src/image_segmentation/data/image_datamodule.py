@@ -12,6 +12,7 @@ from torch.utils.data import DataLoader, Subset
 
 from image_segmentation.data.image_dataset import ImageDataset
 from image_segmentation.data.io_utils import true_stem
+from image_segmentation.data.augmentations import VolumeTransform
 
 
 class ImageDatamodule(LightningDataModule):
@@ -30,9 +31,9 @@ class ImageDatamodule(LightningDataModule):
         split_file_path: Union[str, Path],
         train_split_name: str = "train",
         val_split_ratio: float = 0.2,
-        train_transforms: A.Compose = None,
-        val_transforms: A.Compose = None,
-        test_transforms: A.Compose = None,
+        train_transforms: Union[A.Compose, VolumeTransform] = None,
+        val_transforms: Union[A.Compose, VolumeTransform] = None,
+        test_transforms: Union[A.Compose, VolumeTransform] = None,
         num_workers: int = 16,
         train_batch_size: int = 16,
         val_batch_size: int = 1,
@@ -69,12 +70,9 @@ class ImageDatamodule(LightningDataModule):
         self.mask_input = mask_input
         self.background_fill_value = background_fill_value
 
-    def setup(self, stage: str = None):
-        # No transforms needed here - reused to list files, match ids, and
-        # compute dataset stats (see `get_dataset_stats` on `self.dataset`).
-        self.dataset = ImageDataset(self.data_dir, mask_input=self.mask_input, background_fill_value=self.background_fill_value)
+    def compute_indices(self):
         stem_to_index = {true_stem(p): i for i, p in enumerate(self.dataset.img_paths)}
-
+        
         train_val_ids = self.split_info[self.train_split_name]
         test_ids = self.split_info["test"]
 
@@ -93,6 +91,16 @@ class ImageDatamodule(LightningDataModule):
         self.val_indices = [train_val_indices[i] for i in val_perm]
         self.test_indices = test_indices
 
+        if self.save_resolved_split:
+            self._save_resolved_split(train_val_ids, train_perm, val_perm)
+
+    def setup(self, stage: str = None):
+        # No transforms needed here - reused to list files, match ids, and
+        # compute dataset stats (see `get_dataset_stats` on `self.dataset`).
+        self.dataset = ImageDataset(self.data_dir, mask_input=self.mask_input, background_fill_value=self.background_fill_value)
+
+        self.compute_indices()
+
         self.train_dataset = Subset(
             ImageDataset(self.data_dir, transforms=self.train_transforms), self.train_indices
         )
@@ -102,9 +110,6 @@ class ImageDatamodule(LightningDataModule):
         self.test_dataset = Subset(
             ImageDataset(self.data_dir, transforms=self.test_transforms), self.test_indices
         )
-
-        if self.save_resolved_split:
-            self._save_resolved_split(train_val_ids, train_perm, val_perm)
 
     @staticmethod
     def _resolve_indices(ids: Sequence[str], stem_to_index: dict) -> list:

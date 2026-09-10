@@ -58,3 +58,5 @@ notebooks/*.json
 checkpoints/*/unet_pretraining/
 checkpoints/*/main_model_training/
 checkpoints/*/tests/
+
+cli_commands

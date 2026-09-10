@@ -10,8 +10,8 @@ from image_segmentation.data import ImageDataset
 from image_segmentation.data.io_utils import load_array
 
 class ImageCenterlineDataset(ImageDataset):
-    CENTERLINE_PATH = 'centerlines'
-    PRED_PATH = 'pred'
+    CENTERLINE_DIR = 'centerlines'
+    PRED_DIR = 'pred'
 
     def __init__(self,
                  data_dir: str,
@@ -23,11 +23,11 @@ class ImageCenterlineDataset(ImageDataset):
         super().__init__(data_dir=data_dir, transforms=transforms, mask_input=mask_input, background_fill_value=background_fill_value)
 
         self.centerline_dirname = centerline_dirname
-        self.centerline_dir = self.data_dir / self.CENTERLINE_PATH / centerline_dirname
-        self.pred_dir = self.data_dir / self.PRED_PATH
+        self.centerline_dir = self.data_dir / self.CENTERLINE_DIR / centerline_dirname
+        self.pred_dir = self.data_dir / self.PRED_DIR
 
-        self.centerline_paths = self.get_filenames(self.centerline_dir, extension="json")
-        self.pred_paths = self.get_filenames(self.pred_dir, extension="png")
+        self.centerline_paths = self._list_files(self.centerline_dir)
+        self.pred_paths = self._list_files(self.pred_dir)
 
     def __getitem__(self, idx):
         img, gt = super().__getitem__(idx)
@@ -44,20 +44,12 @@ class ImageCenterlineDataset(ImageDataset):
         train_path_centerlines = centerlines_data["path_centerlines"]
         train_edges_classes = centerlines_data["edges_classes"]
 
-        pred = torch.tensor(pred, dtype=torch.float32)
-        train_path_centerlines = [torch.tensor(path, dtype=torch.float32) for path in train_path_centerlines]
-        train_edges_classes = torch.tensor(train_edges_classes, dtype=torch.long)
+        pred = self._as_tensor(pred).float()
+        train_path_centerlines = [self._as_tensor(path).float() for path in train_path_centerlines]
+        train_edges_classes = self._as_tensor(train_edges_classes).long()
 
         return img, (train_path_centerlines, train_edges_classes), (gt, pred)
 
-    def get_filenames(self, path: str, extension: str):
-        files_list = []
-        filenames = os.listdir(path)
-        filenames = [filename for filename in filenames if (filename.split(".")[0].split("_")[0] == self.dataset_name and filename.split(".")[1] == extension)]
-        filenames.sort()
-        for filename in filenames:
-            files_list.append(os.path.join(path, filename))
-        return files_list
 
     def get_dataset_classes_stats(self):
         classes_stats_filepath = os.path.join(self.centerline_dir, 'classes_stats.json')

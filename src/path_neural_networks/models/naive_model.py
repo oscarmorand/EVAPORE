@@ -25,7 +25,7 @@ class NaiveModelLitModule(pl.LightningModule):
     ) -> torch.Tensor:
         paths_logits = []
         for path in paths:
-            path = path.squeeze(0)  # shape (path_length, 2)
+            path = path.squeeze(0)  # shape (path_length, ndim)
             dist = torch.linalg.norm(path[0] - path[-1])
             paths_logits.append(dist < self.max_dist)
             

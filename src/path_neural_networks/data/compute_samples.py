@@ -5,21 +5,23 @@ import numpy as np
 import networkx as nx
 import torch
 import os
+from typing import List, Tuple
 
-from graph.graph_pred_state import get_combined_graph
+from graph.graph_pred_state import get_combined_graph, get_combined_graph_optim
 from graph.graph_pred_state import EdgePredState
 from graph.graph_oversampling import OversampleNodesTransform
 from graph.graph_wrapper import GraphWrapper
 from path_neural_networks.utils.paths_creation import cut_mask_from_negative_edges_for_all, clean_paths_on_surface_of_mask, get_query_edges
-
 from utils.reconstruction.path_reconstruction.euclidean_path_reconstruction import EuclideanPathReconstructionMethod
+from image_segmentation.data.io_utils import load_array
 
 path_reconstruction_method = EuclideanPathReconstructionMethod()
 
-def get_positive_samples(new_nx_graph: nx.Graph, 
-                         pred_np: np.ndarray,
-                         max_dist: float
-) -> tuple[list, list]:
+def get_positive_samples(
+    new_nx_graph: nx.Graph,
+    pred_np: np.ndarray,
+    max_dist: float
+) -> Tuple[List[List[List[int]]], List[int]]:
     '''
     Computes positive samples for training the path reconstruction model.
     It identifies edges that are in the ground truth but not in the prediction and get the paths for these edges.
@@ -44,23 +46,26 @@ def get_positive_samples(new_nx_graph: nx.Graph,
 
     true_path_edges = torch.tensor(true_path_edges, dtype=torch.long).t().contiguous()
     train_positive_centerlines = path_reconstruction_method.reconstruct(map=None, graph=new_nx_graph, new_edges=true_path_edges)
-    train_positive_centerlines = [[list([int(x), int(y)]) for (x, y) in path] for path in train_positive_centerlines]
-    train_positive_centerlines = cut_mask_from_negative_edges_for_all(train_positive_centerlines, pred_np)["new_centerlines"]
-    train_positive_centerlines = clean_paths_on_surface_of_mask(train_positive_centerlines, pred_np, kernel_size=2, threshold=0.5)
+    print(len(train_positive_centerlines))
+    train_positive_centerlines = [[[int(c) for c in coords] for coords in path] for path in train_positive_centerlines]
+    print(len(train_positive_centerlines))
+    #train_positive_centerlines = cut_mask_from_negative_edges_for_all(train_positive_centerlines, pred_np)["new_centerlines"]
+    #train_positive_centerlines = clean_paths_on_surface_of_mask(train_positive_centerlines, pred_np, kernel_size=2, threshold=0.5)
     train_positive_classes = [1] * len(train_positive_centerlines)
 
     return train_positive_centerlines, train_positive_classes
 
-def get_negative_samples(new_nx_graph: nx.Graph, 
-                         in_pred_graph: nx.Graph,
-                         pred_np: np.ndarray,
-                         gt_np: np.ndarray,
-                         max_dist: float,
-                         n_closest: int,
-) -> tuple[list, list]:
+def get_negative_samples(
+    new_nx_graph: nx.Graph,
+    in_pred_graph: nx.Graph,
+    pred_np: np.ndarray,
+    gt_np: np.ndarray,
+    max_dist: float,
+    n_closest: int,
+) -> Tuple[List[List[List[int]]], List[int]]:
     '''
-    Computes negative samples for training the path reconstruction model. 
-    It identifies edges that are not present in the graph and get the paths for these edges. 
+    Computes negative samples for training the path reconstruction model.
+    It identifies edges that are not present in the graph and get the paths for these edges.
     The reconstructed paths are then filtered to get clean negative samples for training the model.
 
     Args:
@@ -82,13 +87,50 @@ def get_negative_samples(new_nx_graph: nx.Graph,
     train_negative_edges = torch.tensor(train_negative_edges, dtype=torch.long).t().contiguous()
 
     train_negative_centerlines = path_reconstruction_method.reconstruct(map=None, graph=new_nx_graph, new_edges=train_negative_edges)
-    train_negative_centerlines = [[list([int(x), int(y)]) for (x, y) in path] for path in train_negative_centerlines]
-    train_negative_centerlines = cut_mask_from_negative_edges_for_all(train_negative_centerlines, pred_np)["new_centerlines"]
-    train_negative_centerlines = clean_paths_on_surface_of_mask(train_negative_centerlines, pred_np, kernel_size=2, threshold=0.5)
-    train_negative_centerlines = clean_paths_on_surface_of_mask(train_negative_centerlines, gt_np, kernel_size=0, threshold=0.5)
+    train_negative_centerlines = [[[int(c) for c in coords] for coords in path] for path in train_negative_centerlines]
+    #train_negative_centerlines = cut_mask_from_negative_edges_for_all(train_negative_centerlines, pred_np)["new_centerlines"]
+    #train_negative_centerlines = clean_paths_on_surface_of_mask(train_negative_centerlines, pred_np, kernel_size=2, threshold=0.5)
+    #train_negative_centerlines = clean_paths_on_surface_of_mask(train_negative_centerlines, gt_np, kernel_size=0, threshold=0.5)
     train_negative_classes = [0] * len(train_negative_centerlines)
 
     return train_negative_centerlines, train_negative_classes
+
+def display_case_2d(
+    img: np.ndarray,
+    gt_np: np.ndarray,
+    pred_np: np.ndarray,
+    true_path_centerlines: List[List[List[int]]],
+    train_negative_centerlines: List[List[List[int]]],
+) -> None:
+    '''
+    2D-only visualization. For 3D volumes, this needs a different approach
+    (e.g. slice-by-slice display, or a max-intensity projection) — plt.imshow
+    cannot render a 3D array directly.
+    '''
+    mask_img = np.zeros((*gt_np.shape, 3), dtype=np.uint8)
+    mask_img[gt_np] = np.array([255, 0, 0], dtype=np.uint8)  # Red for false negatives
+    mask_img[pred_np] += np.array([0, 255, 255], dtype=np.uint8)  # Cyan for false positives
+
+    centerlines_img = np.zeros((*gt_np.shape, 3), dtype=np.uint8)
+    centerlines_img[pred_np] = [255, 255, 255]
+    for centerline in true_path_centerlines:
+        for coords in centerline:
+            centerlines_img[tuple(coords)] = [0, 255, 0]  # Green for true path centerlines
+    for centerline in train_negative_centerlines:
+        for coords in centerline:
+            centerlines_img[tuple(coords)] = [255, 0, 0]  # Red for negative samples
+
+    fig, axs = plt.subplots(1, 3, figsize=(40, 20))
+    axs[0].imshow(img)
+    axs[0].set_title("Original Image")
+    axs[0].axis('off')
+    axs[1].imshow(mask_img)
+    axs[1].set_title("Prediction and GT: TP (white), FN (red), FP (cyan)")
+    axs[1].axis('off')
+    axs[2].imshow(centerlines_img)
+    axs[2].set_title("Prediction mask and centerlines: positives samples (green), negative samples (red)")
+    axs[2].axis('off')
+    plt.show()
 
 def process_case(i: int, 
                  data_dir: str,
@@ -116,16 +158,17 @@ def process_case(i: int,
     gt_path_list.sort()
 
     filename = gt_path_list[i]
+    base_name = os.path.basename(filename)
     gt_path = os.path.join(gt_folder, filename)
     pred_path = os.path.join(pred_folder, filename)
-    centerline_path = os.path.join(centerlines_folder, filename.replace(".png", ".json"))
+    centerline_path = os.path.join(centerlines_folder, (base_name.split(".")[0] + ".json"))
 
     if os.path.exists(centerline_path):
         print(f"Centerline file already exists for {filename}, skipping...")
         return
 
-    gt_np = np.array(Image.open(gt_path).convert("L")) > 0
-    pred_np = np.array(Image.open(pred_path).convert("L")) > 0
+    gt_np = load_array(gt_path, grayscale=True) > 0
+    pred_np = load_array(pred_path, grayscale=True) > 0
 
     if gt_np.sum() == 0 or pred_np.sum() == 0:
         train_data = {"path_centerlines": [], "edges_classes": []}
@@ -135,7 +178,7 @@ def process_case(i: int,
         return
 
     # Train data creation
-    combined_graph: nx.Graph = get_combined_graph(gt_np, pred_np)
+    combined_graph: nx.Graph = get_combined_graph_optim(gt_np, pred_np)
     oversample_nodes_transform = OversampleNodesTransform(oversampling_max_dist, remove_original_edges=True)
     graph_wrapper: GraphWrapper = oversample_nodes_transform(GraphWrapper(combined_graph))
     new_nx_graph: nx.Graph = graph_wrapper.get_graph()
@@ -146,32 +189,11 @@ def process_case(i: int,
     train_negative_centerlines, train_negative_classes = get_negative_samples(new_nx_graph, in_pred_graph, pred_np, gt_np, centerline_max_dist, n_closest)
 
     if display:
-        img = np.array(Image.open(os.path.join(img_folder, filename)).convert("RGB"))
-
-        mask_img = np.zeros((*gt_np.shape, 3), dtype=np.uint8)
-        mask_img[gt_np] = np.array([255, 0, 0], dtype=np.uint8)  # Red for false negatives
-        mask_img[pred_np] += np.array([0, 255, 255], dtype=np.uint8)  # Cyan for false positives
-
-        centerlines_img = np.zeros((*gt_np.shape, 3), dtype=np.uint8)
-        centerlines_img[pred_np] = [255, 255, 255]
-        for centerline in true_path_centerlines:
-            for (x, y) in centerline:
-                centerlines_img[x, y] = [0, 255, 0]  # Green for true path centerlines
-        for centerline in train_negative_centerlines:
-            for (x, y) in centerline:
-                centerlines_img[x, y] = [255, 0, 0]  # Red for negative samples
-        
-        fig, axs = plt.subplots(1, 3, figsize=(40, 20))
-        axs[0].imshow(img)
-        axs[0].set_title("Original Image")
-        axs[0].axis('off')
-        axs[1].imshow(mask_img)
-        axs[1].set_title("Prediction and GT: TP (white), FN (red), FP (cyan)")
-        axs[1].axis('off')
-        axs[2].imshow(centerlines_img)
-        axs[2].set_title("Prediction mask and centerlines: positives samples (green), negative samples (red)")
-        axs[2].axis('off')
-        plt.show()
+        if gt_np.ndim != 2:
+            print(f"Display is only supported for 2D masks, skipping display for {filename}...")
+        else:
+            img = np.array(Image.open(os.path.join(img_folder, filename)).convert("RGB"))
+            display_case_2d(img, gt_np, pred_np, true_path_centerlines, train_negative_centerlines)
 
     # Combine positive and negative samples to create the training data
     train_data =  {

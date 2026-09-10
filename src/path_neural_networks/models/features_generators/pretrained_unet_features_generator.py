@@ -24,18 +24,28 @@ class PretrainedUnetFeaturesGenerator(UnetFeaturesGenerator):
             for param in net.parameters():
                 param.requires_grad = False
 
-        last_conv = net.layers[-1]
-        assert isinstance(last_conv, nn.Conv2d), "Last layer is not Conv2d"
+        if hasattr(net, "layers"):
+            last_conv = net.layers[-1]
+        elif hasattr(net, "head"):
+            last_conv = net.head
+        else:
+            print(f"No segmentation head was found in the model, it's architecture isn't known: {net}")
+            raise AttributeError()
+
+        assert (isinstance(last_conv, net.ops.Conv)), "Last layer is not a convolution"
         last_conv_in_channels = last_conv.in_channels
 
+        features_conv = None
         if out_channels is None:
-            net.layers[-1] = nn.Identity()
+            features_conv = nn.Identity()
             out_channels = last_conv_in_channels
         else:
-            net.layers[-1] = nn.Conv2d(in_channels=last_conv_in_channels, out_channels=out_channels, kernel_size=1, stride=1)
-            last_conv = net.layers[-1]
+            features_conv = net.ops.Conv(in_channels=last_conv_in_channels, out_channels=out_channels, kernel_size=1, stride=1)
 
-        self.last_conv_weights = last_conv.weight.data.cpu().flatten()
+        if hasattr(net, "layers"):
+            net.layers[-1] = features_conv
+        elif hasattr(net, "head"):
+            net.head = features_conv
 
         super().__init__(net, out_channels, skip_connection=skip_connection, *args, **kwargs)
 

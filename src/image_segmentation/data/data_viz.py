@@ -33,6 +33,7 @@ def plot_batch(
         plot_3d_mode:
             "mid_slice"  -> display the middle slice of each 3D volume.
             "all_slices" -> display every slice.
+            "acc"        -> display the accumulation of the whole 3D on a 2D projection
     """
 
     img, gt = batch[0], batch[1]
@@ -46,10 +47,10 @@ def plot_batch(
     if ndim not in (2, 3):
         raise ValueError(f"Unsupported ndim: {ndim}. Expected 2 or 3.")
 
-    if plot_3d_mode not in ("mid_slice", "all_slices"):
+    if plot_3d_mode not in ("mid_slice", "all_slices", "acc"):
         raise ValueError(
             f"Unknown plot_3d_mode: {plot_3d_mode}. "
-            'Expected "mid_slice" or "all_slices".'
+            'Expected "mid_slice", "all_slices" or "acc".'
         )
 
     is_3d = ndim == 3
@@ -187,7 +188,13 @@ def plot_batch(
 
     depth = img.shape[-1]
 
-    if plot_3d_mode == "mid_slice":
+    if plot_3d_mode == "acc":
+        gt = gt.sum(dim=3, keepdim=True)
+        if pred is not None:
+            pred = pred.sum(dim=3, keepdim=True)
+        img = img[:, :, :, depth // 2].unsqueeze(-1)
+        slice_indices = [0]
+    elif plot_3d_mode == "mid_slice":
         slice_indices = [depth // 2]
     else:
         slice_indices = range(depth)
@@ -195,26 +202,36 @@ def plot_batch(
     for z in slice_indices:
         fig, axes = plt.subplots(
             batch_size,
-            2,
-            figsize=(8, 4 * batch_size),
+            n_cols,
+            figsize=(4 * n_cols, 4 * batch_size),
             squeeze=False,
         )
 
         for i in range(batch_size):
-            axes[i, 0].imshow(
+            im0 = axes[i, 0].imshow(
                 img[i, :, :, z].detach().cpu().numpy(),
                 cmap="gray",
             )
             axes[i, 0].set_title(f"Image {i} — slice {z}/{depth}")
+            fig.colorbar(im0, ax=axes[i, 0], fraction=0.046, pad=0.04)
 
-            axes[i, 1].imshow(
+            im1 = axes[i, 1].imshow(
                 gt[i, :, :, z].detach().cpu().numpy(),
                 cmap="gray",
             )
             axes[i, 1].set_title(f"Ground truth {i} — slice {z}/{depth}")
+            fig.colorbar(im1, ax=axes[i, 1], fraction=0.046, pad=0.04)
 
-            axes[i, 0].axis("off")
-            axes[i, 1].axis("off")
+            if pred is not None:
+                im2 = axes[i, 2].imshow(
+                    pred[i, :, :, z].detach().cpu().numpy(),
+                    cmap="gray",
+                    vmin=0,
+                    vmax=1,
+                )
+                axes[i, 2].set_title(f"Prediction {i}")
+                fig.colorbar(im2, ax=axes[i, 2], fraction=0.046, pad=0.04)
+                axes[i, 2].axis("off")
 
         plt.tight_layout()
         plt.show()

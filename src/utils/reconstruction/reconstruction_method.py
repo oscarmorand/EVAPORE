@@ -1,8 +1,10 @@
 from abc import ABC
+from typing import List, Tuple
+
 import torch
 import numpy as np
 from networkx import Graph
-from typing import Tuple, List
+
 
 class PathReconstructionMethod(ABC):
     def __init__(self, height_related: bool) -> None:
@@ -47,76 +49,83 @@ class RadiusReconstructionMethod(ABC):
         super().__init__()
 
     def reconstruct_one(self,
-                        starting_radius: float,
-                        ending_radius: float,
-                        path: np.array
-    ) -> np.array:
+                         starting_radius: float,
+                         ending_radius: float,
+                         path: np.ndarray
+                         ) -> np.ndarray:
+        raise NotImplementedError
+
+    def reconstruct(self,
+                     graph: Graph,
+                     new_edges: torch.Tensor,
+                     paths: List[np.ndarray]
+                     ) -> List[np.ndarray]:
         raise NotImplementedError
 
 
-    def reconstruct(self, 
-                    graph: Graph,
-                    new_edges: torch.Tensor,
-                    paths: list[np.array]
-    ) -> list[np.array]:
-        raise NotImplementedError
-    
-
-class ReconstructionMethod():
+class ReconstructionMethod:
     def __init__(self,
                  path_reconstruction: PathReconstructionMethod,
                  radius_reconstruction: RadiusReconstructionMethod
-    ) -> None:
+                 ) -> None:
         super().__init__()
         self.path_reconstruction = path_reconstruction
         self.radius_reconstruction = radius_reconstruction
 
     @classmethod
     def get_reconstruction_mask(cls,
-                                mask: torch.Tensor,
-                                paths: list[np.array],
-                                radius_paths: list[np.array]
-    ) -> torch.Tensor:
-        H, W = mask.shape
-        reconstruction_map = torch.zeros((H, W), dtype=mask.dtype)
+                                 mask: torch.Tensor,
+                                 paths: List[np.ndarray],
+                                 radius_paths: List[np.ndarray]
+                                 ) -> torch.Tensor:
+        shape = tuple(mask.shape)  # (H, W) or (D, H, W)
+        ndim = len(shape)
+        reconstruction_map = torch.zeros(shape, dtype=mask.dtype)
 
         for path, radius_path in zip(paths, radius_paths):
-            for (y, x), radius in zip(path, radius_path):
-                y = int(round(y))
-                x = int(round(x))
+            for coords, radius in zip(path, radius_path):
+                center = np.array([int(round(c)) for c in coords])
                 r = int(round(radius))
-                y_min = max(0, y - r)
-                y_max = min(H, y + r + 1)
-                x_min = max(0, x - r)
-                x_max = min(W, x + r + 1)
 
-                for yy in range(y_min, y_max):
-                    for xx in range(x_min, x_max):
-                        if (yy - y) ** 2 + (xx - x) ** 2 <= r ** 2:
-                            reconstruction_map[yy, xx] = 1.0
+                # bounding box, clipped to volume bounds
+                mins = np.maximum(0, center - r)
+                maxs = np.minimum(np.array(shape), center + r + 1)
+                if np.any(mins >= maxs):
+                    continue
+
+                # local grid of indices relative to center, N-dimensional
+                ranges = [np.arange(mins[d], maxs[d]) for d in range(ndim)]
+                grids = np.meshgrid(*ranges, indexing='ij')
+                sq_dist = sum((g - center[d]) ** 2 for d, g in enumerate(grids))
+                sphere_mask = sq_dist <= r ** 2
+
+                slices = tuple(slice(mins[d], maxs[d]) for d in range(ndim))
+                region = reconstruction_map[slices]
+                region[sphere_mask] = 1.0
+                reconstruction_map[slices] = region
 
         return reconstruction_map
-    
+
     @classmethod
-    def draw_reconstruction(cls,       
-                            mask: torch.Tensor,
-                            paths: list[np.array],
-                            radius_paths: list[np.array],
-                            old_edges_color: np.array = np.array([255, 255, 255]),
-                            new_edges_color: np.array = np.array([255, 0, 0])
-    ) -> torch.Tensor:
+    def draw_reconstruction(cls,
+                             mask: torch.Tensor,
+                             paths: List[np.ndarray],
+                             radius_paths: List[np.ndarray],
+                             old_edges_color: np.ndarray = np.array([255, 255, 255]),
+                             new_edges_color: np.ndarray = np.array([255, 0, 0])
+                             ) -> Tuple[torch.Tensor, torch.Tensor]:
         reconstruction_mask = cls.get_reconstruction_mask(mask, paths, radius_paths)
-        img = torch.zeros((mask.shape[0], mask.shape[1], 3), dtype=torch.uint8)
+        img = torch.zeros((*mask.shape, 3), dtype=torch.uint8)
         img[mask.bool()] = torch.tensor(old_edges_color, dtype=torch.uint8)
         img[reconstruction_mask.bool()] = torch.tensor(new_edges_color, dtype=torch.uint8)
-        full_mask = torch.logical_or(mask.bool(),reconstruction_mask.bool())
+        full_mask = torch.logical_or(mask.bool(), reconstruction_mask.bool())
         return img, full_mask
 
-    def reconstruct(self, 
-                    map: torch.Tensor,
-                    graph: Graph,
-                    new_edges: torch.Tensor
-                    ) -> tuple[list[np.array], list[np.array]]:
+    def reconstruct(self,
+                     map: torch.Tensor,
+                     graph: Graph,
+                     new_edges: torch.Tensor
+                     ) -> Tuple[List[np.ndarray], List[np.ndarray]]:
         paths = self.path_reconstruction.reconstruct(map, graph, new_edges)
         radius_paths = self.radius_reconstruction.reconstruct(graph, new_edges, paths)
         return paths, radius_paths

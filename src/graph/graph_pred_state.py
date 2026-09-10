@@ -5,7 +5,7 @@ from scipy.ndimage import binary_dilation, distance_transform_cdt
 from skimage.morphology import skeletonize
 
 from graph.graph_creation import img_to_graph
-from graph.graph_utils import bounding_box, sparse_binary_dilation
+from graph.graph_utils import bounding_box, sparse_binary_dilation, add_back_bounding_box
 
 class EdgePredState(Enum):
     NOT_IN_PREDICTION = 0
@@ -97,19 +97,19 @@ def get_combined_graph_optim(gt: np.ndarray,
     gt_bbox = bounding_box(gt.astype(bool))
     pred_bbox = bounding_box(pred.astype(bool))
     union_bbox = tuple(slice(min(g.start, p.start), max(g.stop, p.stop)) for g, p in zip(gt_bbox, pred_bbox))
-    gt = gt[union_bbox]
-    pred = pred[union_bbox]
+    gt_cropped = gt[union_bbox]
+    pred_cropped = pred[union_bbox]
 
     # Skeletonize image
-    skel_g = skeletonize(gt.astype(bool))
+    skel_g = skeletonize(gt_cropped.astype(bool))
 
     # compute distance map and then radius map
-    distance_map = distance_transform_cdt(gt)
+    distance_map = distance_transform_cdt(gt_cropped)
     radius_map = np.zeros_like(distance_map)
     radius_map[skel_g] = distance_map[skel_g]
 
-    g_skel_in_p = np.logical_and(skel_g, pred)
-    g_skel_not_in_p = np.logical_and(skel_g, np.logical_not(pred))
+    g_skel_in_p = np.logical_and(skel_g, pred_cropped)
+    g_skel_not_in_p = np.logical_and(skel_g, np.logical_not(pred_cropped))
 
     g_skel_not_in_p_dilated = sparse_binary_dilation(g_skel_not_in_p)
     g_skel_not_in_p_dilated = np.logical_and(g_skel_not_in_p_dilated, skel_g)
@@ -118,5 +118,10 @@ def get_combined_graph_optim(gt: np.ndarray,
     g_not_in_p_graph = img_to_graph(g_skel_not_in_p_dilated, False, 0, False, False)
 
     combined_graph = combine_graphs(g_in_p_graph, g_not_in_p_graph, radius_map)
+
+    combined_graph = add_back_bounding_box(
+        combined_graph,
+        union_bbox
+    )
 
     return combined_graph

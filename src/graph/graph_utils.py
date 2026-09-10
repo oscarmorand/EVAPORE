@@ -232,3 +232,49 @@ def bounding_box(mask):
 
     bbox = tuple(slice(mi, ma) for mi, ma in zip(mins, maxs))
     return bbox
+
+
+def add_back_bounding_box(graph: nx.MultiGraph, bbox):
+    """
+    Translate node positions and edge centerlines from cropped-image
+    coordinates back to the original-image coordinates.
+
+    Parameters
+    ----------
+    graph : nx.MultiGraph
+        Graph whose nodes have a ``pos`` attribute and whose edges
+        have a ``centerline`` attribute.
+    bbox : tuple of slices
+        Bounding box used to crop the original image.
+
+    Returns
+    -------
+    nx.MultiGraph
+        Graph with coordinates restored to the original image space.
+    """
+    offsets = tuple(s.start for s in bbox)
+
+    # Restore node positions
+    for node, data in graph.nodes(data=True):
+        if "pos" not in data:
+            raise KeyError(f"Node {node} has no 'pos' attribute")
+
+        data["pos"] = tuple(
+            coord + offset
+            for coord, offset in zip(data["pos"], offsets)
+        )
+
+    # Restore edge centerlines
+    for u, v, key, data in graph.edges(keys=True, data=True):
+        if "centerline" not in data:
+            raise KeyError(f"Edge ({u}, {v}, {key}) has no 'centerline' attribute")
+
+        data["centerline"] = [
+            [
+                coord + offset
+                for coord, offset in zip(point, offsets)
+            ]
+            for point in data["centerline"]
+        ]
+
+    return graph

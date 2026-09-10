@@ -1,6 +1,7 @@
 from .path_encoder import PathEncoder
 from .conv_pooling_encoder import *
 from .pooling_encoder import *
+from .path_encoders import available_path_encoders
 
 __all__ = [
     "PathEncoder",
@@ -13,5 +14,6 @@ __all__ = [
     "SumPoolingPathEncoder",
     "MedianPoolingPathEncoder",
     "StdPoolingPathEncoder",
-    "MultiStatsPoolingPathEncoder"
+    "MultiStatsPoolingPathEncoder",
+    "available_path_encoders"
 ]

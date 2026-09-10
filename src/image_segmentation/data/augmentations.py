@@ -45,15 +45,11 @@ import cv2
 import numpy as np
 import torch
 from albumentations.pytorch import ToTensorV2
-
-try:
-    import torchio as tio
-except ImportError:  # only needed for 3D volumes
-    tio = None
+import torchio as tio
     
 
 # ----------------------------------------------------------------------
-# 2D (images) - unchanged from your original pipeline, just parameterized
+# 2D (images) 
 # ----------------------------------------------------------------------
 
 class AddGaussNoise:
@@ -114,7 +110,7 @@ def build_image_val_transform(mean: Sequence[float], std: Sequence[float]) -> A.
 
 
 # ----------------------------------------------------------------------
-# 3D (volumes) - TorchIO-based equivalent, same dict interface
+# 3D (volumes) 
 # ----------------------------------------------------------------------
 
 def _random_brightness_contrast(
@@ -129,26 +125,22 @@ def _random_brightness_contrast(
 
 
 class VolumeTransform:
-    """Wraps a TorchIO transform to expose the same dict interface as an
-    albumentations `A.Compose`: `transform(image=, mask=, fg_mask=)`.
-
-    Assumes single-channel volumes shaped (W, H, D). Manual brightness/
-    contrast and normalization are applied after the TorchIO transform,
-    since TorchIO has no exact equivalent and to reuse your dataset stats.
-    """
-
     def __init__(
         self,
-        tio_transform,
-        mean: Sequence[float],
-        std: Sequence[float],
+        pre_crop_transform=None,
+        sampler=None,
+        post_crop_transform=None,
+        mean: Sequence[float] = 0.0,
+        std: Sequence[float] = 1.0,
         brightness_contrast_p: float = 0.0,
         brightness_limit: float = 0.15,
         contrast_limit: float = 0.15,
     ):
         if tio is None:
             raise ImportError("torchio is required for 3D augmentations. Install it with `pip install torchio`.")
-        self.tio_transform = tio_transform
+        self.pre_crop_transform = pre_crop_transform or tio.Compose([])
+        self.sampler = sampler  # None => no patch extraction (val path)
+        self.post_crop_transform = post_crop_transform or tio.Compose([])
         self.mean = torch.as_tensor(mean, dtype=torch.float32).view(-1, 1, 1, 1)
         self.std = torch.as_tensor(std, dtype=torch.float32).view(-1, 1, 1, 1)
         self.brightness_contrast_p = brightness_contrast_p
@@ -164,7 +156,13 @@ class VolumeTransform:
             subject_dict["fg_mask"] = tio.LabelMap(tensor=self._add_channel(fg_mask))
         subject = tio.Subject(**subject_dict)
 
-        subject = self.tio_transform(subject)
+        subject = self.pre_crop_transform(subject)
+
+        if self.sampler is not None:
+            # Draw exactly one random, mask-aware patch
+            subject = next(self.sampler(subject, num_patches=1))
+
+        subject = self.post_crop_transform(subject)
 
         img = subject["image"].data.float()
         img = _random_brightness_contrast(
@@ -183,7 +181,7 @@ class VolumeTransform:
         return tensor.unsqueeze(0) if tensor.ndim == 3 else tensor
 
 
-def build_volume_train_transform(
+def build_volume_train_transform_old(
     mean: Sequence[float],
     std: Sequence[float],
     patch_size: Union[int, Sequence[int]],
@@ -216,6 +214,50 @@ def build_volume_train_transform(
         brightness_limit=0.15, contrast_limit=0.15,
     )
 
+def build_volume_train_transform(
+    mean: Sequence[float],
+    std: Sequence[float],
+    patch_size: Union[int, Sequence[int]],
+    lr_axis: int = 0,
+    fg_probability: float = 0.7,
+) -> VolumeTransform:
+    
+    if isinstance(patch_size, int):
+        patch_size = (patch_size, patch_size, patch_size)
+
+    pre_crop = tio.Compose([
+        tio.RandomFlip(axes=(lr_axis,), flip_probability=0.5),
+    ])
+
+    sampler = tio.data.LabelSampler(
+        patch_size=patch_size,
+        label_name="mask",
+        label_probabilities={0: 1 - fg_probability, 1: fg_probability},
+    )
+
+    post_crop = tio.Compose([
+        tio.RandomAffine(
+            scales=0,
+            degrees=5,
+            translation=0,
+            default_pad_value=0,
+            default_pad_label=0,
+            image_interpolation="linear",
+            label_interpolation="nearest",
+            p=0.5,
+        ),
+        tio.RandomNoise(std=(0.005, 0.015), p=0.5, include=["image"]),
+    ])
+
+    return VolumeTransform(
+        pre_crop_transform=pre_crop,
+        sampler=sampler,
+        post_crop_transform=post_crop,
+        mean=mean, std=std,
+        brightness_contrast_p=0.5,
+        brightness_limit=0.15, contrast_limit=0.15,
+    )
+
 
 def build_volume_val_transform(mean: Sequence[float], std: Sequence[float]) -> VolumeTransform:
     # No augmentation, no crop needed (val_batch_size=1 -> no shape mismatch
@@ -226,6 +268,12 @@ def build_volume_val_transform(mean: Sequence[float], std: Sequence[float]) -> V
 # ----------------------------------------------------------------------
 # General functions to call
 # ----------------------------------------------------------------------
+
+def build_empty_transform(ndim: int):
+    if ndim == 2:
+        return A.Compose([ToTensorV2(),],additional_targets={"fg_mask": "mask"})
+    elif ndim == 3:
+        return VolumeTransform(tio.Compose([]))
 
 
 def build_val_transform(ndim: int,
@@ -244,13 +292,14 @@ def build_val_transform(ndim: int,
 def build_train_transform(ndim: int,
                           mean: Sequence[float],
                           std: Sequence[float],
-                          patch_size: Union[int, Sequence[int]]
+                          patch_size: Union[int, Sequence[int]],
+                          fg_probability_3d: float = 0.7
 ) -> A.Compose | VolumeTransform:
     
     if ndim == 2:
         return build_image_train_transform(mean, std, patch_size)
     elif ndim == 3:
-        return build_volume_train_transform(mean, std, patch_size)
+        return build_volume_train_transform(mean, std, patch_size, lr_axis=0, fg_probability=fg_probability_3d)
     raise ValueError(
         f"Unsupported number of dimensions {ndim}. Expected 2 or 3 dimensions."
     )
